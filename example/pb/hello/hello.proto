@@ -1,0 +1,16 @@
+syntax = 'proto3';
+package hello;
+option go_package = "github.com/zly-app/grpc/example/pb/hello";
+
+import "validate/validate.proto";
+
+service helloService{
+  rpc Hello(HelloReq) returns (HelloResp);
+}
+
+message HelloReq{
+  string msg = 1[(validate.rules).string = {min_len: 1, max_len: 10}];
+}
+message HelloResp{
+  string msg = 1;
+}
