@@ -56,13 +56,13 @@ func (s *ServiceAdapter) Close() error {
 }
 
 func NewServiceAdapter(app core.IApp) core.IService {
-	conf := NewConfig()
+	conf := NewServerConfig()
 	err := app.GetConfig().ParseServiceConfig(nowServiceType, conf, true)
 	if err != nil {
 		logger.Log.Panic("grpc服务配置错误", zap.String("serviceType", string(nowServiceType)), zap.Error(err))
 	}
 
-	g, err := NewGrpcServer(app, conf)
+	g, err := NewGRpcServer(app, conf)
 	if err != nil {
 		logger.Log.Panic("创建grpc服务失败", zap.String("serviceType", string(nowServiceType)), zap.Error(err))
 	}

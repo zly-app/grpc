@@ -31,9 +31,9 @@ type GRpcServer struct {
 	server *grpc.Server
 }
 
-func NewGrpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
+func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
 	if err := conf.Check(); err != nil {
-		return nil, fmt.Errorf("配置检查失败: %v", err)
+		return nil, fmt.Errorf("GrpcServer配置检查失败: %v", err)
 	}
 
 	chainUnaryClientList := []grpc.UnaryServerInterceptor{}

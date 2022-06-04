@@ -38,7 +38,7 @@ type ServerConfig struct {
 	ReqDataValidateAllField bool   // 是否对请求数据校验所有字段. 如果设为true, 会对所有字段校验并返回所有的错误. 如果设为false, 校验错误会立即返回.
 }
 
-func NewConfig() *ServerConfig {
+func NewServerConfig() *ServerConfig {
 	return &ServerConfig{
 		HeartbeatTime:           defHeartbeatTime,
 		EnableOpenTrace:         defEnableOpenTrace,

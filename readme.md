@@ -51,7 +51,8 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 # 示例项目
 
-+ [grpc服务端](./example/grpc-s/main.go)
++ [grpc服务端](example/server/main.go)
++ [grpc客户端](example/client/main.go)
 
 # 快速开始
 
@@ -117,8 +118,9 @@ func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.H
 }
 
 func main() {
-	app := zapp.NewApp("grpc-server",
-		grpc.WithService()) // 启用 grpc 服务
+   app := zapp.NewApp("grpc-server",
+      grpc.WithService(), // 启用 grpc 服务
+   )
 
 	grpc.RegistryServerHandler(func(server grpc.ServiceRegistrar) {
 		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
@@ -136,7 +138,7 @@ go mod tidy && go run .
 
 # 配置文件
 
-添加配置文件 `configs/default.yml`. 更多配置参考[这里](./config.go)
+添加配置文件 `configs/default.yaml`. 更多配置参考[这里](./config.go)
 
 ```yaml
 services:

@@ -23,7 +23,8 @@ func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.H
 
 func main() {
 	app := zapp.NewApp("grpc-server",
-		grpc.WithService()) // 启用 grpc 服务
+		grpc.WithService(), // 启用 grpc 服务
+	)
 
 	grpc.RegistryServerHandler(func(server grpc.ServiceRegistrar) {
 		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
