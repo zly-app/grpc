@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -91,6 +92,7 @@ func (g *GRpcServer) Close() {
 
 // 日志拦截器
 func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
+	interceptorUnknownErr := !app.GetConfig().Config().Frame.Debug && !conf.SendDetailedErrorInProduction // 是否拦截未定义的错误
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		log := app.NewTraceLogger(ctx, zap.String("grpc.method", info.FullMethod))
 		ctx = utils.Ctx.SaveLogger(ctx, log)
@@ -105,6 +107,9 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 		reply, err := handler(ctx, req)
 		if err != nil {
 			log.Error("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Error(err))
+			if interceptorUnknownErr && GetErrCode(err) == codes.Unknown { // 拦截未定义错误
+				return reply, errors.New("service internal error")
+			}
 			return reply, err
 		}
 

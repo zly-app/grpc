@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/balance"
 	"github.com/zly-app/grpc/registry/static"
@@ -97,7 +98,8 @@ func UnaryClientLogInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClie
 
 		err := invoker(ctx, method, req, reply, cc, opts...)
 		if err != nil {
-			log.Error("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Error(err))
+			log.Error("grpc.response", zap.String("latency", time.Since(startTime).String()),
+				zap.Uint32("code", uint32(status.Code(err))), zap.Error(err))
 			return err
 		}
 
