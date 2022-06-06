@@ -182,7 +182,7 @@ message Person {
 ```shell
 protoc \
 -I . \
--I $GOPATH/pkg/mod/github.com/zly-app/grpc@0.1.0/protos \
+-I $GOPATH/pkg/mod/github.com/zly-app/grpc@v0.1.0/protos \
 --go_out=. --go_opt=paths=source_relative \
 --validate_out="lang=go:." --validate_opt=paths=source_relative \
 a.proto
@@ -190,4 +190,4 @@ a.proto
 
 3. 让 IDE 自动完成校验参数
 
-需要将 `$GOPATH/pkg/mod/github.com/zly-app/grpc@0.1.0/protos` 添加到 `Protocol Buffers` 的 `Import Paths`
+需要将 `$GOPATH/pkg/mod/github.com/zly-app/grpc@v0.1.0/protos` 添加到 `Protocol Buffers` 的 `Import Paths`
