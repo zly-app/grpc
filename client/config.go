@@ -18,6 +18,10 @@ const (
 	defInsecureDial = true
 	// 是否启用OpenTrace
 	defEnableOpenTrace = true
+	// conn池数量
+	defConnPoolCount = 5
+	// 等待conn时间
+	defWaitConnTime = 5000
 )
 
 // grpc客户端配置
@@ -30,6 +34,8 @@ type ClientConfig struct {
 	EnableOpenTrace   bool   // 是否启用OpenTrace
 	ReqLogLevelIsInfo bool   // 是否将请求日志等级设为info
 	RspLogLevelIsInfo bool   // 是否将响应日志等级设为info
+	ConnPoolCount     int    // conn池数量, 表示同时开启多少个链接
+	WaitConnTime      int    // 等待conn时间, 单位毫秒, 表示在conn池中获取一个conn的最大等待时间, -1表示一直等待直到有可用池
 }
 
 func NewClientConfig() *ClientConfig {
@@ -51,6 +57,14 @@ func (conf *ClientConfig) Check() error {
 	}
 	if conf.DialTimeout < 1 {
 		conf.DialTimeout = defDialTimeout
+	}
+	if conf.ConnPoolCount < 1 {
+		conf.ConnPoolCount = defConnPoolCount
+	}
+	if conf.WaitConnTime < 0 {
+		conf.WaitConnTime = -1
+	} else if conf.WaitConnTime == 0 {
+		conf.WaitConnTime = defWaitConnTime
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -21,13 +22,11 @@ import (
 	"github.com/zly-app/grpc/registry/static"
 )
 
-type Conn = grpc.ClientConn
-
 type GRpcClient struct {
 	app core.IApp
 }
 
-func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (*Conn, error) {
+func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, error) {
 	if err := conf.Check(); err != nil {
 		return nil, fmt.Errorf("GRpcClient配置检查失败: %v", err)
 	}
@@ -40,6 +39,46 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (*Conn, error) 
 		return nil, fmt.Errorf("未定义的GRpc注册器: %v", conf.Registry)
 	}
 
+	// 目标
+	target := fmt.Sprintf("%s://%s/%s", conf.Registry, "", name)
+
+	var connErr error
+	var once sync.Once
+	var wg sync.WaitGroup
+	wg.Add(conf.ConnPoolCount)
+	connList := make([]*grpc.ClientConn, conf.ConnPoolCount)
+	for i := 0; i < conf.ConnPoolCount; i++ {
+		go func(i int) {
+			defer wg.Done()
+			conn, err := makeConn(app, target, conf)
+			if err != nil {
+				once.Do(func() {
+					connErr = err
+				})
+				return
+			}
+			connList[i] = conn
+		}(i)
+	}
+	wg.Wait()
+
+	if connErr != nil {
+		for _, conn := range connList {
+			if conn != nil {
+				_ = conn.Close()
+			}
+		}
+		return nil, connErr
+	}
+
+	connPool := NewGrpcConnPool(conf, connList)
+	return connPool, nil
+}
+
+func makeConn(app core.IApp, target string, conf *ClientConfig) (*grpc.ClientConn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Millisecond)
+	defer cancel()
+
 	// 均衡器
 	var balanceImpl grpc.DialOption
 	switch conf.Balance {
@@ -48,9 +87,6 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (*Conn, error) 
 	default:
 		return nil, fmt.Errorf("未定义的GRpc均衡器: %v", conf.Balance)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Millisecond)
-	defer cancel()
 
 	opts := []grpc.DialOption{
 		balanceImpl,      // 均衡器
@@ -68,7 +104,6 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (*Conn, error) 
 	)
 	opts = append(opts, grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(chainUnaryClientList...)))
 
-	target := fmt.Sprintf("%s://%s/%s", conf.Registry, "", name)
 	conn, err := grpc.DialContext(ctx, target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("grpc客户端连接失败: %v", err)

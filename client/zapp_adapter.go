@@ -24,7 +24,7 @@ type IGRpcClientCreator interface {
 }
 
 type instance struct {
-	cc     *grpc.ClientConn
+	cc     IGrpcConn
 	client interface{}
 }
 
