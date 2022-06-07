@@ -26,7 +26,7 @@ const (
 
 // grpc客户端配置
 type ClientConfig struct {
-	Address           string // 链接地址
+	Address           string // 链接地址, 多个地址用英文逗号分隔
 	Registry          string // 注册器, 默认为 static
 	Balance           string // 均衡器, 默认为 round_robin
 	DialTimeout       int    // 连接超时, 单位毫秒, 默认为 5000
