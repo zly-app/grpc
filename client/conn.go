@@ -18,8 +18,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/zly-app/grpc/balance"
-	"github.com/zly-app/grpc/registry/static"
+	"github.com/zly-app/grpc/client/balance"
+	"github.com/zly-app/grpc/client/registry"
 )
 
 type GRpcClient struct {
@@ -31,12 +31,10 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 		return nil, fmt.Errorf("GRpcClient配置检查失败: %v", err)
 	}
 
-	// 注册服务地址
-	switch strings.ToLower(conf.Registry) {
-	case strings.ToLower(static.Name):
-		static.RegistryAddress(name, conf.Address)
-	default:
-		return nil, fmt.Errorf("未定义的GRpc注册器: %v", conf.Registry)
+	// 获取注册器
+	r, err := registry.GetRegistry(strings.ToLower(conf.Registry), conf.Address)
+	if err != nil {
+		return nil, fmt.Errorf("获取注册器失败: %v", err)
 	}
 
 	// 目标
@@ -50,7 +48,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	for i := 0; i < conf.ConnPoolCount; i++ {
 		go func(i int) {
 			defer wg.Done()
-			conn, err := makeConn(app, target, conf)
+			conn, err := makeConn(app, r, target, conf)
 			if err != nil {
 				once.Do(func() {
 					connErr = err
@@ -75,7 +73,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	return connPool, nil
 }
 
-func makeConn(app core.IApp, target string, conf *ClientConfig) (*grpc.ClientConn, error) {
+func makeConn(app core.IApp, r registry.Registry, target string, conf *ClientConfig) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Millisecond)
 	defer cancel()
 
@@ -89,6 +87,7 @@ func makeConn(app core.IApp, target string, conf *ClientConfig) (*grpc.ClientCon
 	}
 
 	opts := []grpc.DialOption{
+		grpc.WithResolvers(r),
 		balanceImpl,      // 均衡器
 		grpc.WithBlock(), // 等待连接成功. 注意, 这个不要作为配置项, 因为要返回已连接完成的conn, 所以它是必须的.
 	}
