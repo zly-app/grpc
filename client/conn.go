@@ -36,6 +36,13 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	if err != nil {
 		return nil, fmt.Errorf("获取注册器失败: %v", err)
 	}
+	reg := grpc.WithResolvers(r)
+
+	// 获取均衡器
+	balancer, err := balance.GetBalanceDialOption(strings.ToLower(conf.Balance))
+	if err != nil {
+		return nil, fmt.Errorf("获取均衡器失败: %v", err)
+	}
 
 	// 目标
 	target := fmt.Sprintf("%s://%s/%s", conf.Registry, "", name)
@@ -48,7 +55,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	for i := 0; i < conf.ConnPoolCount; i++ {
 		go func(i int) {
 			defer wg.Done()
-			conn, err := makeConn(app, r, target, conf)
+			conn, err := makeConn(app, reg, balancer, target, conf)
 			if err != nil {
 				once.Do(func() {
 					connErr = err
@@ -73,22 +80,13 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	return connPool, nil
 }
 
-func makeConn(app core.IApp, r registry.Registry, target string, conf *ClientConfig) (*grpc.ClientConn, error) {
+func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, conf *ClientConfig) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Millisecond)
 	defer cancel()
 
-	// 均衡器
-	var balanceImpl grpc.DialOption
-	switch conf.Balance {
-	case strings.ToLower(balance.RoundRobin):
-		balanceImpl = balance.NewRoundRobinBalance()
-	default:
-		return nil, fmt.Errorf("未定义的GRpc均衡器: %v", conf.Balance)
-	}
-
 	opts := []grpc.DialOption{
-		grpc.WithResolvers(r),
-		balanceImpl,      // 均衡器
+		registry,
+		balancer,         // 均衡器
 		grpc.WithBlock(), // 等待连接成功. 注意, 这个不要作为配置项, 因为要返回已连接完成的conn, 所以它是必须的.
 	}
 	if conf.InsecureDial {

@@ -1,9 +1,9 @@
 package balance
 
 import (
-	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
 )
 
-func NewRoundRobinBalance() grpc.DialOption {
-	return grpc.WithDefaultServiceConfig(`{ "loadBalancingConfig": [{"round_robin": {}}] }`)
-}
+const (
+	RoundRobin = roundrobin.Name
+)
