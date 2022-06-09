@@ -7,6 +7,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/zly-app/zapp v1.1.10
+	github.com/zlyuancn/zbalancer v1.1.0
 	go.uber.org/zap v1.21.0
 	google.golang.org/grpc v1.47.0
 	google.golang.org/protobuf v1.27.1

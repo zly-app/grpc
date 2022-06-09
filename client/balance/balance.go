@@ -7,9 +7,7 @@ import (
 	"google.golang.org/grpc/balancer"
 )
 
-var balancerBuilders = map[string]struct{}{
-	RoundRobin: {},
-}
+var balancerBuilders = map[string]struct{}{}
 
 // 获取均衡器连接选项
 func GetBalanceDialOption(name string) (grpc.DialOption, error) {
