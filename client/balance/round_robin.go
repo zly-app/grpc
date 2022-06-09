@@ -41,7 +41,8 @@ type rrPicker struct {
 }
 
 func (p *rrPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
-	ins, err := p.Get()
+	target := pkg.GetTargetByCtx(info.Ctx)
+	ins, err := p.Get(zbalancer.WithTarget(target))
 	if err != nil {
 		return balancer.PickResult{}, err
 	}

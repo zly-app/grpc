@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+
+	"github.com/zly-app/grpc/client/pkg"
 )
 
 type GRpcConnPool struct {
@@ -56,6 +58,8 @@ func (g *GRpcConnPool) Invoke(ctx context.Context, method string, args interface
 		return waitCtx.Err()
 	}
 
+	ctx, opts = pkg.InjectTargetToCtx(ctx, opts)
+	ctx, opts = pkg.InjectHashKeyToCtx(ctx, opts)
 	err := conn.Invoke(ctx, method, args, reply, opts...)
 	g.connPool <- conn
 	return err
