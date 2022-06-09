@@ -43,7 +43,7 @@ func GetAddrInfo(addr resolver.Address) *AddrInfo {
 
 // 解析addr
 func ParseAddr(addr string) (*AddrInfo, error) {
-	if !strings.HasPrefix(addr, Scheme+"://") {
+	if !strings.Contains(addr, "://") {
 		addr = Scheme + "://" + addr
 	}
 
