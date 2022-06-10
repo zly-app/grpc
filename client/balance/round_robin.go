@@ -9,31 +9,24 @@ import (
 )
 
 const (
+	/*轮询
+	  按顺序获取实例
+	*/
 	RoundRobin = "round_robin"
 )
 
-type rrPickerBuilder struct{}
-
 func init() {
-	b := base.NewBalancerBuilder(RoundRobin, &rrPickerBuilder{}, base.Config{HealthCheck: true})
+	b := base.NewBalancerBuilder(
+		RoundRobin,
+		&basePickerBuilder{
+			BalancerType: zbalancer.RoundBalancer,
+			PickerCreator: func(b zbalancer.Balancer) balancer.Picker {
+				return &rrPicker{Balancer: b}
+			},
+		},
+		base.Config{HealthCheck: true},
+	)
 	RegistryBalancerBuilder(RoundRobin, b)
-}
-
-func (*rrPickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker {
-	if len(info.ReadySCs) == 0 {
-		return base.NewErrPicker(balancer.ErrNoSubConnAvailable)
-	}
-
-	ins := make([]zbalancer.Instance, 0, len(info.ReadySCs))
-	for sc, connInfo := range info.ReadySCs {
-		addrInfo := pkg.GetAddrInfo(connInfo.Address)
-		ins = append(ins, zbalancer.NewInstance(sc).SetName(addrInfo.Name).SetWeight(addrInfo.Weight))
-	}
-	b, _ := zbalancer.NewBalancer(zbalancer.RoundBalancer)
-	b.Update(ins)
-	return &rrPicker{
-		Balancer: b,
-	}
 }
 
 type rrPicker struct {
