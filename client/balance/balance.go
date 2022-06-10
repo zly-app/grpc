@@ -44,7 +44,7 @@ func (b *basePickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker {
 		addrInfo := pkg.GetAddrInfo(connInfo.Address)
 		ins = append(ins, zbalancer.NewInstance(sc).SetName(addrInfo.Name).SetWeight(addrInfo.Weight))
 	}
-	bImpl, _ := zbalancer.NewBalancer(zbalancer.RoundBalancer)
+	bImpl, _ := zbalancer.NewBalancer(b.BalancerType)
 	bImpl.Update(ins)
 	return b.PickerCreator(bImpl)
 }
