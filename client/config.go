@@ -11,7 +11,7 @@ const (
 	// 注册器
 	defRegistry = static.Name
 	// 均衡器
-	defBalance = balance.RoundRobin
+	defBalance = balance.WeightConsistentHash
 	// 连接超时
 	defDialTimeout = 5000
 	// 是否启用不安全的连接
@@ -27,8 +27,8 @@ const (
 // grpc客户端配置
 type ClientConfig struct {
 	Address           string // 链接地址, 多个地址用英文逗号分隔
-	Registry          string // 注册器, 默认为 static
-	Balance           string // 均衡器, 默认为 round_robin
+	Registry          string // 注册器, 支持 static, 默认为 static
+	Balance           string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash. 默认为 weight_consistent_hash
 	DialTimeout       int    // 连接超时, 单位毫秒, 默认为 5000
 	InsecureDial      bool   // 是否启用不安全的连接, 如果没有设置tls必须开启
 	EnableOpenTrace   bool   // 是否启用OpenTrace
