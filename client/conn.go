@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/client/balance"
+	"github.com/zly-app/grpc/client/pkg"
 	"github.com/zly-app/grpc/client/registry"
 )
 
@@ -47,6 +49,16 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	// 目标
 	target := fmt.Sprintf("%s://%s/%s", conf.Registry, "", name)
 
+	// 代理
+	var ss5 pkg.ISocks5Proxy
+	if conf.ProxyAddress != "" {
+		a, err := pkg.NewSocks5Proxy(conf.ProxyAddress, conf.ProxyUser, conf.ProxyPasswd)
+		if err != nil {
+			return nil, fmt.Errorf("grpc客户端代理创建失败: %v", err)
+		}
+		ss5 = a
+	}
+
 	var connErr error
 	var once sync.Once
 	var wg sync.WaitGroup
@@ -55,7 +67,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	for i := 0; i < conf.ConnPoolCount; i++ {
 		go func(i int) {
 			defer wg.Done()
-			conn, err := makeConn(app, reg, balancer, target, conf)
+			conn, err := makeConn(app, reg, balancer, target, ss5, conf)
 			if err != nil {
 				once.Do(func() {
 					connErr = err
@@ -80,7 +92,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	return connPool, nil
 }
 
-func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, conf *ClientConfig) (*grpc.ClientConn, error) {
+func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, ss5 pkg.ISocks5Proxy, conf *ClientConfig) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Millisecond)
 	defer cancel()
 
@@ -100,6 +112,12 @@ func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, 
 		UnaryClientLogInterceptor(app, conf), // 日志
 	)
 	opts = append(opts, grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(chainUnaryClientList...)))
+
+	if ss5 != nil {
+		opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+			return ss5.DialContext(ctx, "tcp", s)
+		}))
+	}
 
 	conn, err := grpc.DialContext(ctx, target, opts...)
 	if err != nil {
