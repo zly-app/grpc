@@ -22,8 +22,8 @@ type StaticRegistry struct {
 	*manual.Resolver
 }
 
-func (s *StaticRegistry) Registry(listener net.Listener) error { return nil }
-func (s *StaticRegistry) UnRegistry() error                    { return nil }
+func (s *StaticRegistry) Registry(addr net.Addr) error { return nil }
+func (s *StaticRegistry) UnRegistry() error            { return nil }
 
 // 创建Manual
 func NewManual(address string) (registry.Registry, error) {

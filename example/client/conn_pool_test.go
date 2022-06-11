@@ -14,14 +14,13 @@ import (
 )
 
 var testApp core.IApp
-var testHelloClient hello.HelloServiceClient
 var testOnce sync.Once
 
 func makeHelloClient(poolSize int) (core.IApp, hello.HelloServiceClient) {
 	testOnce.Do(func() {
 		grpcConf := client.NewClientConfig()
 		grpcConf.Address = "localhost:3000"
-		grpcConf.ConnPoolCount = poolSize
+		grpcConf.ConnPoolSize = poolSize
 		conf := &core.Config{
 			Components: map[string]map[string]interface{}{
 				"grpc": {
@@ -30,17 +29,16 @@ func makeHelloClient(poolSize int) (core.IApp, hello.HelloServiceClient) {
 			},
 		}
 		app := zapp.NewApp("grpc-test", zapp.WithConfigOption(config.WithConfig(conf)))
-
-		c := client.NewGRpcClientCreator(app) // 获取grpc客户端建造者
-		// 注册客户端创造者
-		c.RegistryGRpcClientCreator("hello", func(cc client.ClientConnInterface) interface{} {
-			return hello.NewHelloServiceClient(cc)
-		})
-		helloClient := c.GetGRpcClient("hello").(hello.HelloServiceClient) // 获取客户端
-		testApp, testHelloClient = app, helloClient
+		testApp = app
 	})
 
-	return testApp, testHelloClient
+	c := client.NewGRpcClientCreator(testApp) // 获取grpc客户端建造者
+	// 注册客户端创造者
+	c.RegistryGRpcClientCreator("hello", func(cc client.ClientConnInterface) interface{} {
+		return hello.NewHelloServiceClient(cc)
+	})
+	helloClient := c.GetGRpcClient("hello").(hello.HelloServiceClient) // 获取客户端
+	return testApp, helloClient
 }
 
 func BenchmarkConnBy1Nums(b *testing.B) {

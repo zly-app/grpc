@@ -9,8 +9,8 @@ import (
 
 type Registry interface {
 	resolver.Builder
-	Registry(listener net.Listener) error // 注册
-	UnRegistry() error                    // 取消注册
+	Registry(addr net.Addr) error // 注册
+	UnRegistry() error            // 取消注册
 }
 
 type RegistryCreator func(address string) (Registry, error)

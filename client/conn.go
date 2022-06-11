@@ -20,8 +20,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/balance"
-	"github.com/zly-app/grpc/registry"
 	"github.com/zly-app/grpc/pkg"
+	"github.com/zly-app/grpc/registry"
 )
 
 type GRpcClient struct {
@@ -62,9 +62,9 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	var connErr error
 	var once sync.Once
 	var wg sync.WaitGroup
-	wg.Add(conf.ConnPoolCount)
-	connList := make([]*grpc.ClientConn, conf.ConnPoolCount)
-	for i := 0; i < conf.ConnPoolCount; i++ {
+	wg.Add(conf.ConnPoolSize)
+	connList := make([]*grpc.ClientConn, conf.ConnPoolSize)
+	for i := 0; i < conf.ConnPoolSize; i++ {
 		go func(i int) {
 			defer wg.Done()
 			conn, err := makeConn(app, reg, balancer, target, ss5, conf)
