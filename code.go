@@ -10,17 +10,17 @@ import (
 type Code = codes.Code
 
 // 创建一个带错误码的err
-func Error(c codes.Code, msg string) error {
+func Error(c Code, msg string) error {
 	return status.New(c, msg).Err()
 }
 
 // 创建一个带错误码的err
-func Errorf(c codes.Code, format string, a ...interface{}) error {
+func Errorf(c Code, format string, a ...interface{}) error {
 	return Error(c, fmt.Sprintf(format, a...))
 }
 
 // 获取错误状态码
-func GetErrCode(err error) codes.Code {
+func GetErrCode(err error) Code {
 	if err == nil {
 		return codes.OK
 	}

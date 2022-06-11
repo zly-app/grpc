@@ -40,6 +40,7 @@ type ClientCreatorAdapter struct {
 	creatorMap map[string]GRpcClientCreator
 }
 
+// 创建grpc客户端建造者
 func NewGRpcClientCreator(app core.IApp, componentType ...core.ComponentType) IGRpcClientCreator {
 	c := &ClientCreatorAdapter{
 		app:           app,

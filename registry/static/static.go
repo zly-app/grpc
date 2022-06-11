@@ -2,13 +2,14 @@ package static
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 
-	"github.com/zly-app/grpc/client/pkg"
-	"github.com/zly-app/grpc/client/registry"
+	"github.com/zly-app/grpc/pkg"
+	"github.com/zly-app/grpc/registry"
 )
 
 const Name = "static"
@@ -16,6 +17,13 @@ const Name = "static"
 func init() {
 	registry.AddCreator(Name, NewManual)
 }
+
+type StaticRegistry struct {
+	*manual.Resolver
+}
+
+func (s *StaticRegistry) Registry(listener net.Listener) error { return nil }
+func (s *StaticRegistry) UnRegistry() error                    { return nil }
 
 // 创建Manual
 func NewManual(address string) (registry.Registry, error) {
@@ -38,5 +46,5 @@ func NewManual(address string) (registry.Registry, error) {
 	}
 
 	r.InitialState(resolver.State{Addresses: addrList})
-	return r, nil
+	return &StaticRegistry{r}, nil
 }

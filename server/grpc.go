@@ -1,4 +1,4 @@
-package grpc
+package server
 
 import (
 	"context"
@@ -107,7 +107,7 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 		reply, err := handler(ctx, req)
 		if err != nil {
 			log.Error("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Error(err))
-			if interceptorUnknownErr && GetErrCode(err) == codes.Unknown { // 拦截未定义错误
+			if interceptorUnknownErr && status.Code(err) == codes.Unknown { // 拦截未定义错误
 				return reply, errors.New("service internal error")
 			}
 			return reply, err

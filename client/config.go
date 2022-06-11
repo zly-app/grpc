@@ -1,8 +1,8 @@
 package client
 
 import (
-	"github.com/zly-app/grpc/client/balance"
-	"github.com/zly-app/grpc/client/registry/static"
+	"github.com/zly-app/grpc/balance"
+	"github.com/zly-app/grpc/registry/static"
 )
 
 const (

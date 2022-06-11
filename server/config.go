@@ -6,7 +6,7 @@
 -------------------------------------------------
 */
 
-package grpc
+package server
 
 const (
 	// bind地址

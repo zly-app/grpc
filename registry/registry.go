@@ -2,11 +2,16 @@ package registry
 
 import (
 	"fmt"
+	"net"
 
 	"google.golang.org/grpc/resolver"
 )
 
-type Registry = resolver.Builder
+type Registry interface {
+	resolver.Builder
+	Registry(listener net.Listener) error // 注册
+	UnRegistry() error                    // 取消注册
+}
 
 type RegistryCreator func(address string) (Registry, error)
 

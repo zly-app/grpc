@@ -5,35 +5,35 @@ import (
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 
-	"github.com/zly-app/grpc/client/pkg"
+	"github.com/zly-app/grpc/pkg"
 )
 
 const (
-	/*加权随机
-	  每个实例有不同权重, 获取时随机选择一个实例, 权重越高被选取的机会越大.
+	/*轮询
+	  按顺序获取实例
 	*/
-	WeightRandom = "weight_random"
+	RoundRobin = "round_robin"
 )
 
 func init() {
 	b := base.NewBalancerBuilder(
-		WeightRandom,
+		RoundRobin,
 		&basePickerBuilder{
-			BalancerType: zbalancer.WeightRandomBalancer,
+			BalancerType: zbalancer.RoundBalancer,
 			PickerCreator: func(b zbalancer.Balancer) balancer.Picker {
-				return &wrPicker{Balancer: b}
+				return &rrPicker{Balancer: b}
 			},
 		},
 		base.Config{HealthCheck: true},
 	)
-	RegistryBalancerBuilder(WeightRandom, b)
+	RegistryBalancerBuilder(RoundRobin, b)
 }
 
-type wrPicker struct {
+type rrPicker struct {
 	zbalancer.Balancer
 }
 
-func (p *wrPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (p *rrPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	target := pkg.GetTargetByCtx(info.Ctx)
 	ins, err := p.Get(zbalancer.WithTarget(target))
 	if err != nil {

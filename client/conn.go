@@ -19,9 +19,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/zly-app/grpc/client/balance"
-	"github.com/zly-app/grpc/client/pkg"
-	"github.com/zly-app/grpc/client/registry"
+	"github.com/zly-app/grpc/balance"
+	"github.com/zly-app/grpc/registry"
+	"github.com/zly-app/grpc/pkg"
 )
 
 type GRpcClient struct {

@@ -41,7 +41,7 @@ func GetAddrInfo(addr resolver.Address) *AddrInfo {
 	return ai
 }
 
-// 解析addr
+// 解析addr, 示例: grpc://localhost:3000?weight=100&name=service1
 func ParseAddr(addr string) (*AddrInfo, error) {
 	if !strings.Contains(addr, "://") {
 		addr = Scheme + "://" + addr

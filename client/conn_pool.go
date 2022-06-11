@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/zly-app/grpc/client/pkg"
+	"github.com/zly-app/grpc/pkg"
 )
 
 type GRpcConnPool struct {

@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 
-	"github.com/zly-app/grpc/client/pkg"
+	"github.com/zly-app/grpc/pkg"
 )
 
 var balancerBuilders = map[string]struct{}{}
