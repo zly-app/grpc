@@ -47,7 +47,7 @@ func (g *GRpcConnPool) Invoke(ctx context.Context, method string, args interface
 	waitCtx := ctx
 	if g.conf.WaitConnTime > 0 {
 		var cancel context.CancelFunc
-		waitCtx, cancel = context.WithTimeout(ctx, time.Duration(g.conf.WaitConnTime)*time.Millisecond)
+		waitCtx, cancel = context.WithTimeout(ctx, time.Duration(g.conf.WaitConnTime)*time.Second)
 		defer cancel()
 	}
 

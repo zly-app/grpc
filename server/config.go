@@ -11,10 +11,10 @@ package server
 const (
 	// bind地址
 	defBind = ":3000"
-	// 心跳时间(毫秒)
-	defHeartbeatTime = 20000
-	// 最小心跳时间(毫秒)
-	defMinHeartbeatTime = 1000
+	// 心跳时间
+	defHeartbeatTime = 20
+	// 最小心跳时间
+	defMinHeartbeatTime = 1
 	// 是否设置请求日志等级设为info
 	defReqLogLevelIsInfo = true
 	// 是否设置响应日志等级设为info
@@ -30,7 +30,7 @@ const (
 // grpc服务配置
 type ServerConfig struct {
 	Bind                          string // bind地址
-	HeartbeatTime                 int    // 心跳时间(毫秒), 默认20000
+	HeartbeatTime                 int    // 心跳时间, 单位秒, 默认20
 	EnableOpenTrace               bool   // 是否启用OpenTrace
 	ReqLogLevelIsInfo             bool   // 是否设置请求日志等级设为info
 	RspLogLevelIsInfo             bool   // 是否设置响应日志等级设为info

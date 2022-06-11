@@ -93,7 +93,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 }
 
 func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, ss5 pkg.ISocks5Proxy, conf *ClientConfig) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Second)
 	defer cancel()
 
 	opts := []grpc.DialOption{

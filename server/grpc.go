@@ -57,7 +57,7 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
 	server := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(chainUnaryClientList...)),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time: time.Duration(conf.HeartbeatTime) * time.Millisecond, // 心跳
+			Time: time.Duration(conf.HeartbeatTime) * time.Second, // 心跳
 		}),
 	)
 
