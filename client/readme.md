@@ -91,11 +91,27 @@ go mod tidy && go run .
 
 # 配置文件
 
-添加配置文件 `configs/default.yaml`. 更多配置参考[这里](./config.go)
+添加配置文件 `configs/default.yaml`.
 
 ```yaml
 components:
-  grpc:
-    hello:
-      Address: localhost:3000
+   grpc:
+      hello:
+         Address: localhost:3000 # 链接地址
+         Registry: static # 注册器, 支持 static
+		 Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
+		 DialTimeout: 5 # 连接超时, 单位秒
+		 InsecureDial: true # 是否启用不安全的连接, 如果没有设置tls必须开启
+		 EnableOpenTrace: true # 是否启用OpenTrace
+		 ReqLogLevelIsInfo: true # 是否将请求日志等级设为info
+		 ConnPoolSize: 5 # conn池大小, 表示对每个服务节点最少开启多少个链接
+		 MaxConnPoolSize: 20 # conn池最大大小, 表示对每个服务节点最多开启多少个链接
+		 AcquireIncrement: 5 # 当连接池中的连接耗尽的时候一次同时获取的连接数
+		 ConnIdleTime: 60 # conn空闲时间, 单位秒, 当conn空闲达到一定时间则被标记为可释放
+		 AutoReleaseConnInterval: 10 # 自动释放空闲conn检查间隔时间, 单位秒
+		 MaxWaitConnSize: 1000 # 最大等待conn数量, 当连接池满后, 新建连接将等待池中连接释放后才可以继续, 等待的数量超出阈值则返回错误
+		 WaitConnTime: 5 # 等待conn时间, 单位秒, 表示在conn池中获取一个conn的最大等待时间, -1表示一直等待直到有可用池
+		 ProxyAddress: "" # 代理地址. 支持 socks5, socks5h. 示例: socks5://127.0.0.1:1080
+		 ProxyUser: "" # 代理用户名
+		 ProxyPasswd: "" # 代理用户密码
 ```

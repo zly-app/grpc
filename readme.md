@@ -1,4 +1,3 @@
-
 <!-- TOC -->
 
 - [grpc服务](#grpc%E6%9C%8D%E5%8A%A1)
@@ -9,7 +8,6 @@
 - [请求数据校验](#%E8%AF%B7%E6%B1%82%E6%95%B0%E6%8D%AE%E6%A0%A1%E9%AA%8C)
 
 <!-- /TOC -->
-
 ---
 
 # grpc服务
@@ -138,12 +136,19 @@ go mod tidy && go run .
 
 # 配置文件
 
-添加配置文件 `configs/default.yaml`. 更多配置参考[这里](./config.go)
+添加配置文件 `configs/default.yaml`.
 
 ```yaml
 services:
    grpc:
-      bind: ":3000"
+      Bind: :3000 # bind地址
+      HeartbeatTime: 20 # 心跳时间, 单位秒
+      EnableOpenTrace: true # 是否启用OpenTrace
+      ReqLogLevelIsInfo: true # 是否设置请求日志等级设为info
+      RspLogLevelIsInfo: true # 是否设置响应日志等级设为info
+      ReqDataValidate: true # 是否启用请求数据校验
+      ReqDataValidateAllField: false # 是否对请求数据校验所有字段. 如果设为true, 会对所有字段校验并返回所有的错误. 如果设为false, 校验错误会立即返回.
+      SendDetailedErrorInProduction: false # 在生产环境发送详细的错误到客户端. 如果设为 false, 在生产环境且错误状态码为 Unknown, 则会返回 service internal error 给客户端.
 ```
 
 # 请求数据校验

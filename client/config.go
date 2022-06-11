@@ -18,10 +18,14 @@ const (
 	defInsecureDial = true
 	// 是否启用OpenTrace
 	defEnableOpenTrace = true
+	// 是否设置请求日志等级设为info
+	defReqLogLevelIsInfo = true
+	// 是否设置响应日志等级设为info
+	defRspLogLevelIsInfo = true
 	// conn池大小
 	defConnPoolSize = 5
 	// conn池最大大小
-	defMaxConnPoolSize = 10
+	defMaxConnPoolSize = 20
 	// 当连接池中的连接耗尽的时候一次同时获取的连接数
 	defAcquireIncrement = 5
 	// conn空闲时间
@@ -36,9 +40,9 @@ const (
 
 // grpc客户端配置
 type ClientConfig struct {
-	Address                 string // 链接地址, 多个地址用英文逗号分隔
-	Registry                string // 注册器, 支持 static, 默认为 static
-	Balance                 string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash. 默认为 weight_consistent_hash
+	Address                 string // 链接地址
+	Registry                string // 注册器, 支持 static
+	Balance                 string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
 	DialTimeout             int    // 连接超时, 单位秒
 	InsecureDial            bool   // 是否启用不安全的连接, 如果没有设置tls必须开启
 	EnableOpenTrace         bool   // 是否启用OpenTrace
@@ -58,8 +62,10 @@ type ClientConfig struct {
 
 func NewClientConfig() *ClientConfig {
 	return &ClientConfig{
-		InsecureDial:    defInsecureDial,
-		EnableOpenTrace: defEnableOpenTrace,
+		InsecureDial:      defInsecureDial,
+		EnableOpenTrace:   defEnableOpenTrace,
+		ReqLogLevelIsInfo: defReqLogLevelIsInfo,
+		RspLogLevelIsInfo: defRspLogLevelIsInfo,
 	}
 }
 
