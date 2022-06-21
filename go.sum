@@ -232,8 +232,8 @@ github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
-github.com/zly-app/zapp v1.1.10 h1:PKgMuCgKUqufwVYUNLKxzxCzWSSUGLb7UCBCV8xvnig=
-github.com/zly-app/zapp v1.1.10/go.mod h1:r72U3dU6JcI7jtqrNpx/3zX7xo21dYnRN/neI9VtjjU=
+github.com/zly-app/zapp v1.1.11 h1:v2ECghlhVWoG1zfdchntjp90jBXMldUy60CSdh9LltQ=
+github.com/zly-app/zapp v1.1.11/go.mod h1:itTp7wuwF18fUw0/WvLO13Gid/NpiZmnkUBxtHegW5Q=
 github.com/zlyuancn/zbalancer v1.1.0 h1:bDs59eIkEXUVTdwMKd6pko2PBAEgAw7TgIQwzzYZKjk=
 github.com/zlyuancn/zbalancer v1.1.0/go.mod h1:c8hq0Lig8lOqqXD7YLqPJOFsNROGG5I6N+6AbuutBYI=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=

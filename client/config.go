@@ -55,9 +55,7 @@ type ClientConfig struct {
 	AutoReleaseConnInterval int    // 自动释放空闲conn检查间隔时间, 单位秒
 	MaxWaitConnSize         int    // 最大等待conn数量, 当连接池满后, 新建连接将等待池中连接释放后才可以继续, 等待的数量超出阈值则返回错误
 	WaitConnTime            int    // 等待conn时间, 单位秒, 表示在conn池中获取一个conn的最大等待时间, -1表示一直等待直到有可用池
-	ProxyAddress            string // 代理地址. 支持 socks5, socks5h. 示例: socks5://127.0.0.1:1080
-	ProxyUser               string // 代理用户名
-	ProxyPasswd             string // 代理用户密码
+	ProxyAddress            string // 代理地址. 支持 socks5, socks5h. 示例: socks5://127.0.0.1:1080 socks5://user:pwd@127.0.0.1:1080
 }
 
 func NewClientConfig() *ClientConfig {

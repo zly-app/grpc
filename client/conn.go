@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/balance"
-	"github.com/zly-app/grpc/pkg"
 	"github.com/zly-app/grpc/registry"
 )
 
@@ -50,9 +49,9 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	target := fmt.Sprintf("%s://%s/%s", conf.Registry, "", name)
 
 	// 代理
-	var ss5 pkg.ISocks5Proxy
+	var ss5 utils.ISocks5Proxy
 	if conf.ProxyAddress != "" {
-		a, err := pkg.NewSocks5Proxy(conf.ProxyAddress, conf.ProxyUser, conf.ProxyPasswd)
+		a, err := utils.NewSocks5Proxy(conf.ProxyAddress)
 		if err != nil {
 			return nil, fmt.Errorf("grpc客户端代理创建失败: %v", err)
 		}
@@ -92,7 +91,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	return connPool, nil
 }
 
-func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, ss5 pkg.ISocks5Proxy, conf *ClientConfig) (*grpc.ClientConn, error) {
+func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, ss5 utils.ISocks5Proxy, conf *ClientConfig) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Second)
 	defer cancel()
 
