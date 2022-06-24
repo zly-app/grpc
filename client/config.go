@@ -14,8 +14,6 @@ const (
 	defBalance = balance.WeightConsistentHash
 	// 连接超时
 	defDialTimeout = 5
-	// 是否启用不安全的连接
-	defInsecureDial = true
 	// 是否启用OpenTrace
 	defEnableOpenTrace = true
 	// 是否设置请求日志等级设为info
@@ -44,7 +42,6 @@ type ClientConfig struct {
 	Registry                string // 注册器, 支持 static
 	Balance                 string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
 	DialTimeout             int    // 连接超时, 单位秒
-	InsecureDial            bool   // 是否启用不安全的连接, 如果没有设置tls必须开启
 	EnableOpenTrace         bool   // 是否启用OpenTrace
 	ReqLogLevelIsInfo       bool   // 是否将请求日志等级设为info
 	RspLogLevelIsInfo       bool   // 是否将响应日志等级设为info
@@ -56,11 +53,12 @@ type ClientConfig struct {
 	MaxWaitConnSize         int    // 最大等待conn数量, 当连接池满后, 新建连接将等待池中连接释放后才可以继续, 等待的数量超出阈值则返回错误
 	WaitConnTime            int    // 等待conn时间, 单位秒, 表示在conn池中获取一个conn的最大等待时间, -1表示一直等待直到有可用池
 	ProxyAddress            string // 代理地址. 支持 socks5, socks5h. 示例: socks5://127.0.0.1:1080 socks5://user:pwd@127.0.0.1:1080
+	TLSCertFile             string // tls公钥文件路径
+	TLSDomain               string // tls签发域名
 }
 
 func NewClientConfig() *ClientConfig {
 	return &ClientConfig{
-		InsecureDial:      defInsecureDial,
 		EnableOpenTrace:   defEnableOpenTrace,
 		ReqLogLevelIsInfo: defReqLogLevelIsInfo,
 		RspLogLevelIsInfo: defRspLogLevelIsInfo,

@@ -18,6 +18,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -54,7 +56,17 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryServerReqDataValidateAllInterceptor)
 	}
 
+	cred := grpc.Creds(insecure.NewCredentials())
+	if conf.TLSCertFile != "" && conf.TLSKeyFile != "" {
+		tc, err := credentials.NewServerTLSFromFile(conf.TLSCertFile, conf.TLSKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("加载tls文件失败: %v", err)
+		}
+		cred = grpc.Creds(tc)
+	}
+
 	server := grpc.NewServer(
+		cred,
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(chainUnaryClientList...)),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time: time.Duration(conf.HeartbeatTime) * time.Second, // 心跳

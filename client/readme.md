@@ -101,7 +101,6 @@ components:
          Registry: static # 注册器, 支持 static
          Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
          DialTimeout: 5 # 连接超时, 单位秒
-         InsecureDial: true # 是否启用不安全的连接, 如果没有设置tls必须开启
          EnableOpenTrace: true # 是否启用OpenTrace
          ReqLogLevelIsInfo: true # 是否将请求日志等级设为info
          ConnPoolSize: 5 # conn池大小, 表示对每个服务节点最少开启多少个链接
@@ -112,4 +111,6 @@ components:
          MaxWaitConnSize: 1000 # 最大等待conn数量, 当连接池满后, 新建连接将等待池中连接释放后才可以继续, 等待的数量超出阈值则返回错误
          WaitConnTime: 5 # 等待conn时间, 单位秒, 表示在conn池中获取一个conn的最大等待时间, -1表示一直等待直到有可用池
          ProxyAddress: "" # 代理地址. 支持 socks5, socks5h. 示例: socks5://127.0.0.1:1080 socks5://127.0.0.1:1080 socks5://user:pwd@127.0.0.1:1080
+         TLSCertFile: "" # tls公钥文件路径
+         TLSDomain: "" # tls签发域名         
 ```

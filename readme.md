@@ -149,6 +149,8 @@ services:
       ReqDataValidate: true # 是否启用请求数据校验
       ReqDataValidateAllField: false # 是否对请求数据校验所有字段. 如果设为true, 会对所有字段校验并返回所有的错误. 如果设为false, 校验错误会立即返回.
       SendDetailedErrorInProduction: false # 在生产环境发送详细的错误到客户端. 如果设为 false, 在生产环境且错误状态码为 Unknown, 则会返回 service internal error 给客户端.
+      TLSCertFile: '' # tls公钥文件路径
+      TLSKeyFile: '' # tls私钥文件路径
 ```
 
 # 请求数据校验

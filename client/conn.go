@@ -15,6 +15,7 @@ import (
 	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -100,9 +101,17 @@ func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, 
 		balancer,         // 均衡器
 		grpc.WithBlock(), // 等待连接成功. 注意, 这个不要作为配置项, 因为要返回已连接完成的conn, 所以它是必须的.
 	}
-	if conf.InsecureDial {
+
+	if conf.TLSCertFile != "" {
+		tc, err := credentials.NewClientTLSFromFile(conf.TLSCertFile, conf.TLSDomain)
+		if err != nil {
+			return nil, fmt.Errorf("加载tls文件失败: %v", err)
+		}
+		opts = append(opts, grpc.WithTransportCredentials(tc))
+	} else {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials())) // 不安全连接
 	}
+
 	var chainUnaryClientList []grpc.UnaryClientInterceptor
 	if conf.EnableOpenTrace {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryClientOpenTraceInterceptor)
