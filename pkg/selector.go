@@ -14,8 +14,8 @@ type targetOption struct {
 }
 
 // 指定目标
-func WithTarget(name string) grpc.CallOption {
-	return targetOption{Target: name}
+func WithTarget(target string) grpc.CallOption {
+	return targetOption{Target: target}
 }
 
 // 将目标注入到ctx
@@ -44,8 +44,8 @@ type hashKeyOption struct {
 }
 
 // 指定key
-func WithHashKey(key string) grpc.CallOption {
-	return hashKeyOption{HashKey: key}
+func WithHashKey(hashKey string) grpc.CallOption {
+	return hashKeyOption{HashKey: hashKey}
 }
 
 // 将key注入到ctx
