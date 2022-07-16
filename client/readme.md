@@ -118,16 +118,21 @@ components:
          Address: localhost:3000 # 链接地址
          Registry: static # 注册器, 支持 static
          Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
-         DialTimeout: 5 # 连接超时, 单位秒
          EnableOpenTrace: true # 是否启用OpenTrace
          ReqLogLevelIsInfo: true # 是否将请求日志等级设为info
-         ConnPoolSize: 5 # conn池大小, 表示对每个服务节点最少开启多少个链接
-         MaxConnPoolSize: 20 # conn池最大大小, 表示对每个服务节点最多开启多少个链接
-         AcquireIncrement: 5 # 当连接池中的连接耗尽的时候一次同时获取的连接数
-         ConnIdleTime: 60 # conn空闲时间, 单位秒, 当conn空闲达到一定时间则被标记为可释放
-         AutoReleaseConnInterval: 10 # 自动释放空闲conn检查间隔时间, 单位秒
-         MaxWaitConnSize: 1000 # 最大等待conn数量, 当连接池满后, 新建连接将等待池中连接释放后才可以继续, 等待的数量超出阈值则返回错误
-         WaitConnTime: 5 # 等待conn时间, 单位秒, 表示在conn池中获取一个conn的最大等待时间, -1表示一直等待直到有可用池
+         RspLogLevelIsInfo: true # 是否将响应日志等级设为info
+         WaitFirstConn: true # 初始化时等待第一个链接
+         MinIdle: 2 # 最小闲置
+         MaxIdle: 4 # 最大闲置
+         MaxActive: 10 # 最大活跃连接数, 小于1表示不限制
+         BatchIncrement: 4 # 批次增量, 当conn不够时, 一次性最多申请多少个链接
+         BatchShrink: 4 # 批次缩容, 当conn太多时(超过最大闲置), 一次性最多释放多少个链接
+         ConnIdleTimeout: 3600 # 空闲链接超时时间, 单位秒, 如果一个连接长时间未使用将被视为连接无效, 小于1表示永不超时
+         WaitTimeout: 5 # 等待获取连接的超时时间, 单位秒
+         MaxWaitConnCount: 2000 # 最大等待conn的数量, 小于1表示不限制
+         ConnectTimeout: 5 # 连接超时, 单位秒
+         MaxConnLifetime: 3600 # 一个连接最大存活时间, 单位秒, 小于1表示不限制
+         CheckIdleInterval: 5 # 检查空闲间隔, 单位秒
          ProxyAddress: "" # 代理地址. 支持 socks5, socks5h. 示例: socks5://127.0.0.1:1080 socks5://127.0.0.1:1080 socks5://user:pwd@127.0.0.1:1080
          TLSCertFile: "" # tls公钥文件路径
          TLSDomain: "" # tls签发域名         

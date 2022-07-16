@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -13,19 +12,59 @@ import (
 	open_log "github.com/opentracing/opentracing-go/log"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/pkg/utils"
+	"github.com/zlyuancn/connpool"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/balance"
+	"github.com/zly-app/grpc/pkg"
 	"github.com/zly-app/grpc/registry"
 )
 
+type IGrpcConn interface {
+	grpc.ClientConnInterface
+	Close() error
+}
+
 type GRpcClient struct {
-	app core.IApp
+	app  core.IApp
+	pool connpool.IConnectPool
+}
+
+func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
+	conn, err := g.pool.Get(ctx)
+	if err != nil {
+		return err
+	}
+	v := conn.GetConn().(*grpc.ClientConn)
+
+	ctx, opts = pkg.InjectTargetToCtx(ctx, opts)
+	ctx, opts = pkg.InjectHashKeyToCtx(ctx, opts)
+	err = v.Invoke(ctx, method, args, reply, opts...)
+	g.pool.Put(conn)
+	return err
+}
+
+func (g *GRpcClient) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	return nil, fmt.Errorf("当前版本不支持stream")
+}
+
+func (g *GRpcClient) Close() error {
+	g.pool.Close()
+	return nil
+}
+func (g *GRpcClient) getConn(ctx context.Context) (*grpc.ClientConn, error) {
+	conn, err := g.pool.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v := conn.GetConn().(*grpc.ClientConn)
+	return v, nil
 }
 
 func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, error) {
@@ -59,43 +98,59 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 		ss5 = a
 	}
 
-	var connErr error
-	var once sync.Once
-	var wg sync.WaitGroup
-	wg.Add(conf.ConnPoolSize)
-	connList := make([]*grpc.ClientConn, conf.ConnPoolSize)
-	for i := 0; i < conf.ConnPoolSize; i++ {
-		go func(i int) {
-			defer wg.Done()
-			conn, err := makeConn(app, reg, balancer, target, ss5, conf)
-			if err != nil {
-				once.Do(func() {
-					connErr = err
-				})
-				return
-			}
-			connList[i] = conn
-		}(i)
-	}
-	wg.Wait()
-
-	if connErr != nil {
-		for _, conn := range connList {
-			if conn != nil {
-				_ = conn.Close()
-			}
+	var creator connpool.Creator = func(ctx context.Context) (interface{}, error) {
+		v, err := makeConn(ctx, app, reg, balancer, target, ss5, conf)
+		if err != nil {
+			app.Warn("创建conn失败", zap.String("target", target), zap.Error(err))
 		}
-		return nil, connErr
+		return v, err
+	}
+	var connClose connpool.ConnClose = func(conn *connpool.Conn) {
+		v, ok := conn.GetConn().(*grpc.ClientConn)
+		if ok {
+			_ = v.Close()
+		}
+	}
+	var valid connpool.ValidConnected = func(conn *connpool.Conn) bool {
+		v, ok := conn.GetConn().(*grpc.ClientConn)
+		return ok && v.GetState() == connectivity.Ready
+	}
+	pool, err := makePool(conf, creator, connClose, valid)
+	if err != nil {
+		return nil, fmt.Errorf("GRpcClient连接池创建失败: %v", err)
 	}
 
-	connPool := NewGrpcConnPool(conf, connList)
-	return connPool, nil
+	g := &GRpcClient{
+		app:  app,
+		pool: pool,
+	}
+	return g, nil
 }
 
-func makeConn(app core.IApp, registry, balancer grpc.DialOption, target string, ss5 utils.ISocks5Proxy, conf *ClientConfig) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.DialTimeout)*time.Second)
-	defer cancel()
+func makePool(conf *ClientConfig, creator connpool.Creator, connClose connpool.ConnClose,
+	valid connpool.ValidConnected) (connpool.IConnectPool, error) {
+	poolConf := &connpool.Config{
+		WaitFirstConn:     conf.WaitFirstConn,
+		MinIdle:           conf.MinIdle,
+		MaxIdle:           conf.MaxIdle,
+		MaxActive:         conf.MaxActive,
+		BatchIncrement:    conf.BatchIncrement,
+		BatchShrink:       conf.BatchShrink,
+		IdleTimeout:       time.Duration(conf.ConnIdleTimeout) * time.Second,
+		WaitTimeout:       time.Duration(conf.WaitTimeout) * time.Second,
+		MaxWaitConnCount:  conf.MaxWaitConnCount,
+		ConnectTimeout:    time.Duration(conf.ConnectTimeout) * time.Second,
+		MaxConnLifetime:   time.Duration(conf.MaxConnLifetime) * time.Second,
+		CheckIdleInterval: time.Duration(conf.CheckIdleInterval) * time.Second,
+		Creator:           creator,
+		ConnClose:         connClose,
+		ValidConnected:    valid,
+	}
+	return connpool.NewConnectPool(poolConf)
+}
 
+func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOption, target string,
+	ss5 utils.ISocks5Proxy, conf *ClientConfig) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		registry,
 		balancer,         // 均衡器

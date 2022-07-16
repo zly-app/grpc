@@ -7,6 +7,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/zly-app/zapp v1.1.11
+	github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd
 	github.com/zlyuancn/zbalancer v1.1.0
 	go.uber.org/zap v1.21.0
 	google.golang.org/grpc v1.47.0
@@ -35,5 +36,5 @@ require (
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
 	gopkg.in/ini.v1 v1.51.0 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
