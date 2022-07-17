@@ -12,6 +12,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/opentracing/opentracing-go"
 	open_log "github.com/opentracing/opentracing-go/log"
+	"github.com/zly-app/zapp/component/gpool"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/logger"
 	"github.com/zly-app/zapp/pkg/utils"
@@ -44,8 +45,13 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
 	if conf.EnableOpenTrace {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryServerOpenTraceInterceptor)
 	}
+	gPool := gpool.NewGPool(&gpool.GPoolConfig{
+		JobQueueSize: conf.MaxReqWaitQueueSize,
+		ThreadCount:  conf.ThreadCount,
+	})
 	chainUnaryClientList = append(chainUnaryClientList,
 		UnaryServerLogInterceptor(app, conf),   // 日志
+		GPoolLimitInterceptor(gPool),           // 协程池限制
 		grpc_ctxtags.UnaryServerInterceptor(),  // 设置标记
 		grpc_recovery.UnaryServerInterceptor(), // panic恢复
 	)
@@ -117,6 +123,7 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 		}
 
 		reply, err := handler(ctx, req)
+
 		if err != nil {
 			log.Error("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Error(err))
 			if interceptorUnknownErr && status.Code(err) == codes.Unknown { // 拦截未定义错误
@@ -131,6 +138,19 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 			log.Debug("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Any("reply", reply))
 		}
 
+		return reply, err
+	}
+}
+
+func GPoolLimitInterceptor(pool core.IGPool) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (reply interface{}, err error) {
+		err, ok := pool.TryGoSync(func() error {
+			reply, err = handler(ctx, req)
+			return err
+		})
+		if !ok {
+			return nil, errors.New("gPool Limit")
+		}
 		return reply, err
 	}
 }

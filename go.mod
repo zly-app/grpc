@@ -6,7 +6,7 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v0.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/opentracing/opentracing-go v1.2.0
-	github.com/zly-app/zapp v1.1.11
+	github.com/zly-app/zapp v1.1.12
 	github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd
 	github.com/zlyuancn/zbalancer v1.1.0
 	go.uber.org/zap v1.21.0
@@ -29,6 +29,7 @@ require (
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/takama/daemon v1.0.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/automaxprocs v1.5.1 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4 // indirect
 	golang.org/x/sys v0.0.0-20210510120138-977fb7262007 // indirect
