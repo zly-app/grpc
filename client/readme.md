@@ -118,7 +118,7 @@ components:
          Address: localhost:3000 # 链接地址
          Registry: static # 注册器, 支持 static
          Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
-         EnableOpenTrace: true # 是否启用OpenTrace
+         DisableOpenTrace: false # 是否关闭OpenTrace
          ReqLogLevelIsInfo: true # 是否将请求日志等级设为info
          RspLogLevelIsInfo: true # 是否将响应日志等级设为info
          WaitFirstConn: true # 初始化时等待第一个链接

@@ -23,8 +23,8 @@ const (
 	defReqLogLevelIsInfo = true
 	// 是否设置响应日志等级设为info
 	defRspLogLevelIsInfo = true
-	// 是否启用OpenTrace
-	defEnableOpenTrace = true
+	// 是否关闭OpenTrace
+	defDisableOpenTrace = false
 	// 是否启用请求数据校验
 	defReqDataValidate = true
 	// 是否对请求数据校验所有字段
@@ -39,7 +39,7 @@ const (
 type ServerConfig struct {
 	Bind                          string // bind地址
 	HeartbeatTime                 int    // 心跳时间, 单位秒
-	EnableOpenTrace               bool   // 是否启用OpenTrace
+	DisableOpenTrace              bool   // 是否关闭OpenTrace
 	ReqLogLevelIsInfo             bool   // 是否设置请求日志等级设为info
 	RspLogLevelIsInfo             bool   // 是否设置响应日志等级设为info
 	ReqDataValidate               bool   // 是否启用请求数据校验
@@ -59,7 +59,7 @@ type ServerConfig struct {
 func NewServerConfig() *ServerConfig {
 	return &ServerConfig{
 		HeartbeatTime:           defHeartbeatTime,
-		EnableOpenTrace:         defEnableOpenTrace,
+		DisableOpenTrace:        defDisableOpenTrace,
 		ReqLogLevelIsInfo:       defReqLogLevelIsInfo,
 		RspLogLevelIsInfo:       defRspLogLevelIsInfo,
 		ReqDataValidate:         defReqDataValidate,

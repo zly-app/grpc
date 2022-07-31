@@ -168,7 +168,7 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 	}
 
 	var chainUnaryClientList []grpc.UnaryClientInterceptor
-	if conf.EnableOpenTrace {
+	if !conf.DisableOpenTrace {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryClientOpenTraceInterceptor)
 	}
 	chainUnaryClientList = append(chainUnaryClientList,
@@ -228,7 +228,7 @@ func UnaryClientLogInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClie
 
 // 开放链路追踪hook
 func UnaryClientOpenTraceInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	span := utils.Trace.GetChildSpan(ctx, method)
+	span := utils.Trace.GetChildSpan(ctx, "grpc."+method)
 	defer span.Finish()
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
@@ -246,7 +246,7 @@ func UnaryClientOpenTraceInterceptor(ctx context.Context, method string, req, re
 	_ = opentracing.GlobalTracer().Inject(span.Context(), opentracing.TextMap, carrier)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
-	span.SetTag("target", cc.Target())
+	span.LogFields(open_log.String("target", cc.Target()))
 	span.LogFields(open_log.Object("req", req))
 	err := invoker(ctx, method, req, reply, cc, opts...)
 	if err != nil {

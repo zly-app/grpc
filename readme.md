@@ -143,7 +143,7 @@ services:
    grpc:
       Bind: :3000 # bind地址
       HeartbeatTime: 20 # 心跳时间, 单位秒
-      EnableOpenTrace: true # 是否启用OpenTrace
+      DisableOpenTrace: false # 是否关闭OpenTrace
       ReqLogLevelIsInfo: true # 是否设置请求日志等级设为info
       RspLogLevelIsInfo: true # 是否设置响应日志等级设为info
       ReqDataValidate: true # 是否启用请求数据校验

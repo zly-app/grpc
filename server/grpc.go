@@ -42,7 +42,7 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
 
 	chainUnaryClientList := []grpc.UnaryServerInterceptor{}
 
-	if conf.EnableOpenTrace {
+	if !conf.DisableOpenTrace {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryServerOpenTraceInterceptor)
 	}
 	gPool := gpool.NewGPool(&gpool.GPoolConfig{
@@ -183,7 +183,7 @@ func UnaryServerOpenTraceInterceptor(ctx context.Context, req interface{}, info 
 	carrier := TextMapCarrier{md}
 	parentSpan, _ := opentracing.GlobalTracer().Extract(opentracing.TextMap, carrier)
 
-	span := opentracing.StartSpan(info.FullMethod, opentracing.ChildOf(parentSpan))
+	span := opentracing.StartSpan("grpc."+info.FullMethod, opentracing.ChildOf(parentSpan))
 	defer span.Finish()
 	ctx = opentracing.ContextWithSpan(ctx, span)
 

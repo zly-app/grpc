@@ -12,8 +12,8 @@ const (
 	defRegistry = static.Name
 	// 均衡器
 	defBalance = balance.WeightConsistentHash
-	// 是否启用OpenTrace
-	defEnableOpenTrace = true
+	// 是否关闭OpenTrace
+	defDisableOpenTrace = false
 	// 是否设置请求日志等级设为info
 	defReqLogLevelIsInfo = true
 	// 是否设置响应日志等级设为info
@@ -50,7 +50,7 @@ type ClientConfig struct {
 	Address           string // 链接地址
 	Registry          string // 注册器, 支持 static
 	Balance           string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
-	EnableOpenTrace   bool   // 是否启用OpenTrace
+	DisableOpenTrace  bool   // 是否关闭OpenTrace
 	ReqLogLevelIsInfo bool   // 是否将请求日志等级设为info
 	RspLogLevelIsInfo bool   // 是否将响应日志等级设为info
 
@@ -74,7 +74,7 @@ type ClientConfig struct {
 
 func NewClientConfig() *ClientConfig {
 	return &ClientConfig{
-		EnableOpenTrace:   defEnableOpenTrace,
+		DisableOpenTrace:  defDisableOpenTrace,
 		ReqLogLevelIsInfo: defReqLogLevelIsInfo,
 		RspLogLevelIsInfo: defRspLogLevelIsInfo,
 
