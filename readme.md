@@ -14,6 +14,8 @@
 
 > 提供用于 https://github.com/zly-app/zapp 的服务
 
+> 客户端说明转到[这里](./client)
+
 # 先决条件
 
 
