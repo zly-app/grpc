@@ -1,8 +1,6 @@
 package grpc
 
 import (
-	"google.golang.org/grpc"
-
 	"github.com/zly-app/grpc/server"
 )
 
@@ -19,5 +17,3 @@ var RegistryHttpGatewayHandler = server.RegistryHttpGatewayHandler
 
 // 获取logger
 var GetLogger = server.GetLogger
-
-type ClientConn = grpc.ClientConn

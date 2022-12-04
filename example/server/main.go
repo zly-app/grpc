@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/zly-app/zapp"
 
 	"github.com/zly-app/grpc"
@@ -28,6 +29,10 @@ func main() {
 
 	grpc.RegistryServerHandler(func(server grpc.ServiceRegistrar) {
 		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
+	})
+
+	grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+		return hello.RegisterHelloServiceHandler(ctx, mux, conn)
 	})
 
 	app.Run()

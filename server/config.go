@@ -15,6 +15,8 @@ import (
 const (
 	// bind地址
 	defBind = ":3000"
+	// http bind地址
+	defHttpBind = ":8080"
 	// 心跳时间
 	defHeartbeatTime = 20
 	// 最小心跳时间
@@ -38,7 +40,7 @@ const (
 // grpc服务配置
 type ServerConfig struct {
 	Bind                          string // bind地址
-	HttpBind                      string // http绑定地址
+	HttpBind                      string // http bind地址
 	HeartbeatTime                 int    // 心跳时间, 单位秒
 	DisableOpenTrace              bool   // 是否关闭OpenTrace
 	ReqLogLevelIsInfo             bool   // 是否设置请求日志等级设为info
@@ -73,6 +75,9 @@ func NewServerConfig() *ServerConfig {
 func (conf *ServerConfig) Check() error {
 	if conf.Bind == "" {
 		conf.Bind = defBind
+	}
+	if conf.HttpBind == "" {
+		conf.HttpBind = defHttpBind
 	}
 	if conf.HeartbeatTime < defMinHeartbeatTime {
 		conf.HeartbeatTime = defMinHeartbeatTime

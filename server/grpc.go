@@ -160,13 +160,8 @@ func (g *GRpcServer) StartGateway() error {
 }
 
 func (g *GRpcServer) makeGatewayConn(port int) (*grpc.ClientConn, error) {
-	ctx, cancel := context.WithTimeout(g.app.BaseContext(), time.Second*3)
+	ctx, cancel := context.WithTimeout(g.app.BaseContext(), time.Second)
 	defer cancel()
-
-	target := fmt.Sprintf("localhost:%v", port)
-	if g.conf.TLSCertFile != "" && g.conf.TLSDomain != "" {
-		target = fmt.Sprintf("%v:%v", g.conf.TLSDomain, port)
-	}
 
 	opts := []grpc.DialOption{
 		grpc.WithBlock(), // 等待连接成功. 注意, 这个不要作为配置项, 因为要返回已连接完成的conn, 所以它是必须的.
@@ -182,6 +177,7 @@ func (g *GRpcServer) makeGatewayConn(port int) (*grpc.ClientConn, error) {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials())) // 不安全连接
 	}
 
+	target := fmt.Sprintf("localhost:%v", port)
 	conn, err := grpc.DialContext(ctx, target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("grpc网关客户端连接失败: %v", err)

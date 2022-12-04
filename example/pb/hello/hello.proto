@@ -2,10 +2,16 @@ syntax = 'proto3';
 package hello;
 option go_package = "github.com/zly-app/grpc/example/pb/hello";
 
+import "google/api/annotations.proto";
 import "validate/validate.proto";
 
 service helloService{
-  rpc Hello(HelloReq) returns (HelloResp);
+  rpc Hello(HelloReq) returns (HelloResp){
+    option (google.api.http) = {
+      post: "/hello/hello"
+      body: "*"
+    };
+  };
 }
 
 message HelloReq{

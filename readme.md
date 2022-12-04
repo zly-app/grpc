@@ -3,9 +3,10 @@
 - [grpc服务](#grpc%E6%9C%8D%E5%8A%A1)
 - [先决条件](#%E5%85%88%E5%86%B3%E6%9D%A1%E4%BB%B6)
 - [示例项目](#%E7%A4%BA%E4%BE%8B%E9%A1%B9%E7%9B%AE)
-- [快速开始](#%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B)
+- [快速开始服务端](#%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B%E6%9C%8D%E5%8A%A1%E7%AB%AF)
 - [配置文件](#%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6)
 - [请求数据校验](#%E8%AF%B7%E6%B1%82%E6%95%B0%E6%8D%AE%E6%A0%A1%E9%AA%8C)
+- [http网关](#http%E7%BD%91%E5%85%B3)
 
 <!-- /TOC -->
 ---
@@ -141,7 +142,7 @@ go mod tidy && go run server/main.go
 services:
    grpc:
       Bind: :3000 # bind地址
-	   HttpBind: '' # http绑定地址
+      HttpBind: ':8080' # http绑定地址
       HeartbeatTime: 20 # 心跳时间, 单位秒
       DisableOpenTrace: false # 是否关闭OpenTrace
       ReqLogLevelIsInfo: true # 是否设置请求日志等级设为info
@@ -153,6 +154,7 @@ services:
       MaxReqWaitQueueSize: 10000 # 最大请求等待队列大小
       TLSCertFile: '' # tls公钥文件路径
       TLSKeyFile: '' # tls私钥文件路径
+      TLSDomain: '' # tls签发域名
 ```
 
 # 请求数据校验
@@ -270,7 +272,18 @@ pb/hello/hello.proto
 
 可以看到新出现了一个 `pb/hello/hello.pb.gw.go` 文件
 
-修改服务端 `server/main.go`
+修改服务端 `server/main.go` 添加代码
+
+```git
+impot "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+// 注册网关服务handler
+grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+    return hello.RegisterHelloServiceHandler(ctx, mux, conn)
+})
+```
+
+完整文件如下
 
 ```go
 package main
@@ -316,15 +329,6 @@ func main() {
 }
 ```
 
-修改配置文件 `configs/default.yaml` 以启动网关服务
-
-```yaml
-services:
-   grpc:
-      Bind: :3000 # bind地址
-      HttpBind: :8080 # http地址
-```
-
 运行服务端
 
 ```shell
@@ -336,4 +340,3 @@ go mod tidy && go run server/main.go
 ```curl
 curl -X POST http://localhost:8080/hello/hello -d '{"msg": "hello"}'
 ```
-
