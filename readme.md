@@ -35,63 +35,59 @@ go install github.com/golang/protobuf/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 ```
 
-4. 数据校验支持
+4. 获取依赖 proto 文件
 
-   1. 安装 [protoc-gen-validate](https://github.com/envoyproxy/protoc-gen-validate)
+```shell
+go install github.com/zly-app/grpc@v0.3.0
+```
 
-   ```shell
-   go install github.com/envoyproxy/protoc-gen-validate@latest
-   ```
+将 `${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos` 添加到 IDE 的 proto 导入路径.
 
-   2. 获取依赖 proto 文件
+Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths`, 需要取消勾选 `Configure automatically` 才能添加路径.
 
-   ```shell
-   go get github.com/zly-app/grpc@v0.1.0
-   ```
 
 # 示例项目
 
 + [grpc服务端](example/server/main.go)
 + [grpc客户端](example/client/main.go)
 
-# 快速开始
+# 快速开始(服务端)
 
-1. 创建一个项目
+创建工程
 
-```shell
-mkdir server && cd server
-go mod init server
+```
+mkdir grpc-test && cd grpc-test && go mod init grpc-test
 ```
 
-2. 添加 `hello/hello.proto` 文件
+准备 `pb/hello/hello.proto` 文件
 
-```protobuf
+```proto3
 syntax = 'proto3';
 package hello; // 决定proto引用路径和rpc路由
-option go_package = "server/hello/hello"; // 用于对golang包管理的定位
+option go_package = "grpc-test/pb/hello"; // 用于对golang包管理的定位
 
 service helloService{
-   rpc Hello(HelloReq) returns (HelloResp);
+  rpc Hello(HelloReq) returns (HelloResp);
 }
 
 message HelloReq{
-   string msg = 1;
+  string msg = 1;
 }
 message HelloResp{
-   string msg = 1;
+  string msg = 1;
 }
 ```
 
-3. 编译 proto
-   
-```shell
+编译 proto
+
+```
 protoc \
---go_out=. --go_opt=paths=source_relative \
---go-grpc_out=. --go-grpc_opt=paths=source_relative \
-hello/hello.proto
+--go_out . --go_opt paths=source_relative \
+--go-grpc_out . --go-grpc_opt paths=source_relative \
+pb/hello/hello.proto
 ```
 
-4. 添加 `main.go` 文件
+服务端 `server/main.go`
 
 ```go
 package main
@@ -102,7 +98,7 @@ import (
 	"github.com/zly-app/grpc"
 	"github.com/zly-app/zapp"
 
-	"server/hello"
+	"grpc-test/pb/hello"
 )
 
 var _ hello.HelloServiceServer = (*HelloService)(nil)
@@ -118,10 +114,11 @@ func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.H
 }
 
 func main() {
-   app := zapp.NewApp("grpc-server",
-      grpc.WithService(), // 启用 grpc 服务
-   )
+	app := zapp.NewApp("grpc-server",
+		grpc.WithService(), // 启用 grpc 服务
+	)
 
+   // 注册rpc服务handler
 	grpc.RegistryServerHandler(func(server grpc.ServiceRegistrar) {
 		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
 	})
@@ -130,10 +127,10 @@ func main() {
 }
 ```
 
-5. 运行
+运行服务端
 
 ```shell
-go mod tidy && go run .
+go mod tidy && go run server/main.go
 ```
 
 # 配置文件
@@ -144,6 +141,7 @@ go mod tidy && go run .
 services:
    grpc:
       Bind: :3000 # bind地址
+	   HttpBind: '' # http绑定地址
       HeartbeatTime: 20 # 心跳时间, 单位秒
       DisableOpenTrace: false # 是否关闭OpenTrace
       ReqLogLevelIsInfo: true # 是否设置请求日志等级设为info
@@ -161,12 +159,18 @@ services:
 
 我们使用 [protoc-gen-validate](https://github.com/envoyproxy/protoc-gen-validate) 作为数据校验工具
 
-1. 添加 a.proto 文件
+安装 [protoc-gen-validate](https://github.com/envoyproxy/protoc-gen-validate)
+
+```shell
+go install github.com/envoyproxy/protoc-gen-validate@latest
+```
+
+添加 `pb/a.proto` 文件
 
 ```protobuf
 syntax = "proto3";
-package example.pb;
-option go_package = 'example/pb';
+package a; // 决定proto引用路径和rpc路由
+option go_package = "grpc-test/pb"; // 用于对golang包管理的定位
 import "validate/validate.proto";
 
 message Person {
@@ -188,17 +192,148 @@ message Person {
 }
 ```
 
-2. 编译 proto
+编译 proto
 
 ```shell
 protoc \
 -I . \
--I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.1.0/protos \
---go_out=. --go_opt=paths=source_relative \
---validate_out="lang=go:." --validate_opt=paths=source_relative \
-a.proto
+-I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos \
+--go_out . --go_opt paths=source_relative \
+--validate_out "lang=go:." --validate_opt paths=source_relative \
+pb/a.proto
 ```
 
-3. 让 IDE 自动完成校验参数
+# http网关
 
-需要将 `${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.1.0/protos` 添加到 `Protocol Buffers` 的 `Import Paths`
+使用 [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway) 作为 http 网关
+
+安装 grpc-gateway
+
+```shell
+go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+```
+
+修改 `pb/hello/hello.proto` 文件
+
+```git
++ import "google/api/annotations.proto"; // 添加导入
+
+service helloService{
+-  rpc Hello(HelloReq) returns (HelloResp);
++  rpc Hello(HelloReq) returns (HelloResp){ // 修改rpc接口
++    option (google.api.http) = {
++      post: "/hello/hello"
++      body: "*"
++    };
++  };
+}
+```
+
+完整文件如下
+
+```proto3
+syntax = 'proto3';
+package hello; // 决定proto引用路径和rpc路由
+option go_package = "grpc-test/pb/hello"; // 用于对golang包管理的定位
+
+import "google/api/annotations.proto";  // 添加导入
+
+service helloService{
+  rpc Hello(HelloReq) returns (HelloResp){// 修改rpc接口
+    option (google.api.http) = {
+      post: "/hello/hello"
+      body: "*"
+    };
+  };
+}
+
+message HelloReq{
+  string msg = 1;
+}
+message HelloResp{
+  string msg = 1;
+}
+```
+
+
+重新编译 proto
+
+```shell
+protoc \
+-I . \
+-I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos \
+--go_out . --go_opt paths=source_relative \
+--go-grpc_out . --go-grpc_opt paths=source_relative \
+--grpc-gateway_out . --grpc-gateway_opt paths=source_relative \
+pb/hello/hello.proto
+```
+
+可以看到新出现了一个 `pb/hello/hello.pb.gw.go` 文件
+
+修改服务端 `server/main.go`
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/zly-app/zapp"
+
+	"github.com/zly-app/grpc"
+	"grpc-test/pb/hello"
+)
+
+var _ hello.HelloServiceServer = (*HelloService)(nil)
+
+type HelloService struct {
+	hello.UnimplementedHelloServiceServer
+}
+
+func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.HelloResp, error) {
+	log := grpc.GetLogger(ctx) // 获取log
+	log.Info("收到请求", req.Msg)
+	return &hello.HelloResp{Msg: req.GetMsg() + "world"}, nil
+}
+
+func main() {
+	app := zapp.NewApp("grpc-server",
+		grpc.WithService(), // 启用 grpc 服务
+	)
+
+   // 注册rpc服务handler
+	grpc.RegistryServerHandler(func(server grpc.ServiceRegistrar) {
+		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
+	})
+
+   // 注册网关服务handler
+	grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+		return hello.RegisterHelloServiceHandler(ctx, mux, conn)
+	})
+
+	app.Run()
+}
+```
+
+修改配置文件 `configs/default.yaml` 以启动网关服务
+
+```yaml
+services:
+   grpc:
+      Bind: :3000 # bind地址
+      HttpBind: :8080 # http地址
+```
+
+运行服务端
+
+```shell
+go mod tidy && go run server/main.go
+```
+
+现在可以通过curl访问了
+
+```curl
+curl -X POST http://localhost:8080/hello/hello -d '{"msg": "hello"}'
+```
+

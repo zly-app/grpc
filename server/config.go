@@ -38,6 +38,7 @@ const (
 // grpc服务配置
 type ServerConfig struct {
 	Bind                          string // bind地址
+	HttpBind                      string // http绑定地址
 	HeartbeatTime                 int    // 心跳时间, 单位秒
 	DisableOpenTrace              bool   // 是否关闭OpenTrace
 	ReqLogLevelIsInfo             bool   // 是否设置请求日志等级设为info
@@ -54,6 +55,7 @@ type ServerConfig struct {
 	MaxReqWaitQueueSize int
 	TLSCertFile         string // tls公钥文件路径
 	TLSKeyFile          string // tls私钥文件路径
+	TLSDomain           string // tls签发域名
 }
 
 func NewServerConfig() *ServerConfig {

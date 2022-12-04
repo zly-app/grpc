@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+
 	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/logger"
@@ -32,6 +34,11 @@ func RegistryServerHandler(h RegistryGrpcServerHandler) {
 	zapp.App().InjectService(nowServiceType, h)
 }
 
+// 注册grpc服务网关handler
+func RegistryHttpGatewayHandler(h RegistryGrpcHttpGatewayHandler) {
+	zapp.App().InjectService(nowServiceType, h)
+}
+
 type ServiceAdapter struct {
 	app    core.IApp
 	server *GRpcServer
@@ -39,11 +46,14 @@ type ServiceAdapter struct {
 
 func (s *ServiceAdapter) Inject(a ...interface{}) {
 	for _, v := range a {
-		h, ok := v.(RegistryGrpcServerHandler)
-		if !ok {
-			s.app.Fatal("grpc服务注入类型错误, 它必须能转为 grpc.RegistryGrpcServerHandler")
+		switch h := v.(type) {
+		case RegistryGrpcServerHandler:
+			s.server.RegistryServerHandler(h)
+		case RegistryGrpcHttpGatewayHandler:
+			s.server.RegistryHttpGatewayHandler(h)
+		default:
+			s.app.Fatal("grpc服务注入类型错误", zap.String("Type", fmt.Sprintf("%T", v)))
 		}
-		s.server.RegistryServerHandler(h)
 	}
 }
 

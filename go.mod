@@ -1,17 +1,18 @@
 module github.com/zly-app/grpc
 
-go 1.17
+go 1.19
 
 require (
 	github.com/envoyproxy/protoc-gen-validate v0.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.14.0
 	github.com/opentracing/opentracing-go v1.2.0
-	github.com/zly-app/zapp v1.1.12
+	github.com/zly-app/zapp v1.3.1
 	github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd
 	github.com/zlyuancn/zbalancer v1.1.0
 	go.uber.org/zap v1.21.0
-	google.golang.org/grpc v1.47.0
-	google.golang.org/protobuf v1.27.1
+	google.golang.org/grpc v1.51.0
+	google.golang.org/protobuf v1.28.1
 )
 
 require (
@@ -31,10 +32,10 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/automaxprocs v1.5.1 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4 // indirect
-	golang.org/x/sys v0.0.0-20210510120138-977fb7262007 // indirect
-	golang.org/x/text v0.3.3 // indirect
-	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
+	golang.org/x/net v0.2.0 // indirect
+	golang.org/x/sys v0.2.0 // indirect
+	golang.org/x/text v0.4.0 // indirect
+	google.golang.org/genproto v0.0.0-20221202195650-67e5cbc046fd // indirect
 	gopkg.in/ini.v1 v1.51.0 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
