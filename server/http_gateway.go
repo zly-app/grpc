@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type GrpcHttpGatewayHandler = func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error
@@ -48,7 +49,7 @@ func (g *GRpcServer) StartGateway() error {
 		return err
 	}
 
-	gwMux := runtime.NewServeMux()
+	gwMux := runtime.NewServeMux(runtime.WithMetadata(gatewayMetadataAnnotator))
 	for _, h := range g.httpGatewayHandlers {
 		err = h(context.Background(), gwMux, conn)
 		if err != nil {
@@ -62,6 +63,11 @@ func (g *GRpcServer) StartGateway() error {
 
 	g.app.Info("正在启动grpc网关服务", zap.String("bind", gatewayListener.Addr().String()))
 	return gwServer.Serve(gatewayListener)
+}
+
+// grpc元数据注解器
+func gatewayMetadataAnnotator(ctx context.Context, request *http.Request) metadata.MD {
+	return nil
 }
 
 func (g *GRpcServer) makeGatewayConn(port int) (*grpc.ClientConn, error) {
