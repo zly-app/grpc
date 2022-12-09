@@ -8,7 +8,6 @@ import (
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/opentracing/opentracing-go"
 	open_log "github.com/opentracing/opentracing-go/log"
@@ -36,7 +35,7 @@ type GRpcServer struct {
 	httpGatewayHandlers []GrpcHttpGatewayHandler
 }
 
-func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
+func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...RequestHook) (*GRpcServer, error) {
 	if err := conf.Check(); err != nil {
 		return nil, fmt.Errorf("GrpcServer配置检查失败: %v", err)
 	}
@@ -51,10 +50,10 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
 		ThreadCount:  conf.ThreadCount,
 	})
 	chainUnaryClientList = append(chainUnaryClientList,
-		UnaryServerLogInterceptor(app, conf),   // 日志
-		GPoolLimitInterceptor(gPool),           // 协程池限制
-		grpc_ctxtags.UnaryServerInterceptor(),  // 设置标记
-		grpc_recovery.UnaryServerInterceptor(), // panic恢复
+		grpc_ctxtags.UnaryServerInterceptor(), // 设置标记
+		UnaryServerLogInterceptor(app, conf),  // 日志
+		GPoolLimitInterceptor(gPool),          // 协程池限制
+		RecoveryInterceptor(),                 // panic恢复
 	)
 	if conf.ReqDataValidate && !conf.ReqDataValidateAllField {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryServerReqDataValidateInterceptor)
@@ -74,10 +73,12 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig) (*GRpcServer, error) {
 
 	server := grpc.NewServer(
 		cred,
-		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(chainUnaryClientList...)),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time: time.Duration(conf.HeartbeatTime) * time.Second, // 心跳
 		}),
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(chainUnaryClientList...)),
+		grpc.ChainUnaryInterceptor(HookInterceptor(hooks...)), // 请求拦截
+		grpc.ChainUnaryInterceptor(RecoveryInterceptor()),     // 最终执行也要单独加一个恢复器
 	)
 
 	g := &GRpcServer{
@@ -129,9 +130,20 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 		reply, err := handler(ctx, req)
 
 		if err != nil {
-			log.Error("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Error(err))
+			opts := []interface{}{
+				"grpc.response",
+				zap.String("latency", time.Since(startTime).String()), zap.Error(err),
+			}
+
+			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
+			if hasPanic {
+				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
+				opts = append(opts, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
+			}
+
+			log.Error(opts...)
 			if interceptorUnknownErr && status.Code(err) == codes.Unknown { // 拦截未定义错误
-				return reply, errors.New("service internal error")
+				return reply, status.Error(codes.Internal, "service internal error")
 			}
 			return reply, err
 		}
@@ -189,12 +201,18 @@ func UnaryServerOpenTraceInterceptor(ctx context.Context, req interface{}, info 
 
 	span := opentracing.StartSpan("grpc."+info.FullMethod, opentracing.ChildOf(parentSpan))
 	defer span.Finish()
-	ctx = opentracing.ContextWithSpan(ctx, span)
+	ctx = utils.Trace.SaveSpan(ctx, span)
 
 	span.LogFields(open_log.Object("req", req))
 	reply, err := handler(ctx, req)
 	if err != nil {
 		span.SetTag("error", true)
+		hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
+		if hasPanic {
+			panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
+			span.SetTag("panic", true)
+			span.SetTag("panic.detail", panicErrDetail)
+		}
 		span.LogFields(open_log.Error(err))
 	} else {
 		span.LogFields(open_log.Object("reply", reply))
