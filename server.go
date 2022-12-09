@@ -1,8 +1,14 @@
 package grpc
 
 import (
+	"context"
+
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
 	"github.com/zly-app/grpc/server"
 )
+
+type ServeMux = runtime.ServeMux
 
 type ServiceRegistrar = server.ServiceRegistrar
 
@@ -10,10 +16,14 @@ type ServiceRegistrar = server.ServiceRegistrar
 var WithService = server.WithService
 
 // 注册grpc服务handler
-var RegistryServerHandler = server.RegistryServerHandler
+var RegistryServerHandler = func(h func(server ServiceRegistrar)) {
+	server.RegistryServerHandler(h)
+}
 
 // 注册grpc服务网关handler
-var RegistryHttpGatewayHandler = server.RegistryHttpGatewayHandler
+var RegistryHttpGatewayHandler = func(h func(ctx context.Context, mux *ServeMux, conn *ClientConn) error) {
+	server.RegistryHttpGatewayHandler(h)
+}
 
 // 获取logger
 var GetLogger = server.GetLogger

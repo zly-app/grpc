@@ -30,12 +30,12 @@ func WithService() zapp.Option {
 }
 
 // 注册grpc服务handler
-func RegistryServerHandler(h RegistryGrpcServerHandler) {
+func RegistryServerHandler(h GrpcServerHandler) {
 	zapp.App().InjectService(nowServiceType, h)
 }
 
 // 注册grpc服务网关handler
-func RegistryHttpGatewayHandler(h RegistryGrpcHttpGatewayHandler) {
+func RegistryHttpGatewayHandler(h GrpcHttpGatewayHandler) {
 	zapp.App().InjectService(nowServiceType, h)
 }
 
@@ -47,9 +47,9 @@ type ServiceAdapter struct {
 func (s *ServiceAdapter) Inject(a ...interface{}) {
 	for _, v := range a {
 		switch h := v.(type) {
-		case RegistryGrpcServerHandler:
+		case GrpcServerHandler:
 			s.server.RegistryServerHandler(h)
-		case RegistryGrpcHttpGatewayHandler:
+		case GrpcHttpGatewayHandler:
 			s.server.RegistryHttpGatewayHandler(h)
 		default:
 			s.app.Fatal("grpc服务注入类型错误", zap.String("Type", fmt.Sprintf("%T", v)))

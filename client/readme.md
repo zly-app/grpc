@@ -135,7 +135,7 @@ components:
          CheckIdleInterval: 5 # 检查空闲间隔, 单位秒
          ProxyAddress: "" # 代理地址. 支持 socks5, socks5h. 示例: socks5://127.0.0.1:1080 socks5://127.0.0.1:1080 socks5://user:pwd@127.0.0.1:1080
          TLSCertFile: "" # tls公钥文件路径
-         TLSDomain: "" # tls签发域名         
+         TLSDomain: "" # tls签发域名
 ```
 
 # 请求负载均衡

@@ -7,6 +7,7 @@
 - [配置文件](#%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6)
 - [请求数据校验](#%E8%AF%B7%E6%B1%82%E6%95%B0%E6%8D%AE%E6%A0%A1%E9%AA%8C)
 - [http网关](#http%E7%BD%91%E5%85%B3)
+- [客户端](#%E5%AE%A2%E6%88%B7%E7%AB%AF)
 
 <!-- /TOC -->
 ---
@@ -98,7 +99,6 @@ import (
 
 	"github.com/zly-app/grpc"
 	"github.com/zly-app/zapp"
-
 	"grpc-test/pb/hello"
 )
 
@@ -275,10 +275,8 @@ pb/hello/hello.proto
 修改服务端 `server/main.go` 添加代码
 
 ```git
-impot "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-
 // 注册网关服务handler
-grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *grpc.ServeMux, conn *grpc.ClientConn) error {
     return hello.RegisterHelloServiceHandler(ctx, mux, conn)
 })
 ```
@@ -291,9 +289,7 @@ package main
 import (
 	"context"
 
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/zly-app/zapp"
-
 	"github.com/zly-app/grpc"
 	"grpc-test/pb/hello"
 )
@@ -321,7 +317,7 @@ func main() {
 	})
 
    // 注册网关服务handler
-	grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+	grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *grpc.ServeMux, conn *grpc.ClientConn) error {
 		return hello.RegisterHelloServiceHandler(ctx, mux, conn)
 	})
 
@@ -340,3 +336,47 @@ go mod tidy && go run server/main.go
 ```curl
 curl -X POST http://localhost:8080/hello/hello -d '{"msg": "hello"}'
 ```
+
+# 客户端
+
+创建客户端文件 `client/main.go`
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/zly-app/zapp"
+
+	"github.com/zly-app/grpc"
+	"grpc-test/pb/hello"
+)
+
+func main() {
+	app := zapp.NewApp("grpc-client")
+	defer app.Exit()
+
+	c := grpc.NewGRpcClientCreator(app) // 获取grpc客户端建造者
+	// 注册客户端创造者
+	c.RegistryGRpcClientCreator("hello", func(cc grpc.ClientConnInterface) interface{} {
+		return hello.NewHelloServiceClient(cc)
+	})
+	helloClient := c.GetGRpcClient("hello").(hello.HelloServiceClient) // 获取客户端
+
+	// 调用
+	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+	if err != nil {
+		app.Fatal(resp)
+	}
+	app.Info("收到结果", resp.GetMsg())
+}
+```
+
+运行客户端
+
+```shell
+go mod tidy && go run server/main.go
+```
+
+更多客户端说明参考[这里](./client/)
