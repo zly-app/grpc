@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -14,6 +16,14 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+)
+
+const (
+	GatewayMetadataMethod  = "gw.method"
+	GatewayMetadataPath    = "gw.path-bin"
+	GatewayMetadataParams  = "gw.params-bin"
+	GatewayMetadataIP      = "gw.ip-bin"
+	GatewayMetadataHeaders = "gw.headers-bin"
 )
 
 type GrpcHttpGatewayHandler = func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error
@@ -73,8 +83,25 @@ func (g *Gateway) Close() {
 }
 
 // grpc元数据注解器
-func gatewayMetadataAnnotator(ctx context.Context, request *http.Request) metadata.MD {
-	return nil
+func gatewayMetadataAnnotator(ctx context.Context, req *http.Request) metadata.MD {
+	method := req.Method
+	path := req.URL.Path
+	params, _ := url.QueryUnescape(req.URL.RawQuery)
+	ip := RequestExtractIP(req)
+	headers := req.Header
+
+	headersStorage := make([]string, len(headers)*2)
+	for k, vv := range headers {
+		headersStorage = append(headersStorage, k, strings.Join(vv, ";"))
+	}
+
+	return metadata.MD{
+		GatewayMetadataMethod:  {method},
+		GatewayMetadataPath:    {path},
+		GatewayMetadataParams:  {params},
+		GatewayMetadataIP:      {ip},
+		GatewayMetadataHeaders: headersStorage,
+	}
 }
 
 func (g *Gateway) makeGatewayConn(serverPort int, tlsCertFile, tlsDomain string) (*grpc.ClientConn, error) {
