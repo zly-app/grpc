@@ -8,6 +8,8 @@ import (
 	"github.com/zly-app/zapp/logger"
 	"github.com/zly-app/zapp/service"
 	"go.uber.org/zap"
+
+	"github.com/zly-app/grpc/gateway"
 )
 
 // 默认服务类型
@@ -35,7 +37,7 @@ func RegistryServerHandler(h GrpcServerHandler) {
 }
 
 // 注册grpc服务网关handler
-func RegistryHttpGatewayHandler(h GrpcHttpGatewayHandler) {
+func RegistryHttpGatewayHandler(h gateway.GrpcHttpGatewayHandler) {
 	zapp.App().InjectService(nowServiceType, h)
 }
 
@@ -49,7 +51,7 @@ func (s *ServiceAdapter) Inject(a ...interface{}) {
 		switch h := v.(type) {
 		case GrpcServerHandler:
 			s.server.RegistryServerHandler(h)
-		case GrpcHttpGatewayHandler:
+		case gateway.GrpcHttpGatewayHandler:
 			s.server.RegistryHttpGatewayHandler(h)
 		default:
 			s.app.Fatal("grpc服务注入类型错误", zap.String("Type", fmt.Sprintf("%T", v)))

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -23,16 +24,18 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/zly-app/grpc/gateway"
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
 type GrpcServerHandler = func(server ServiceRegistrar)
 
 type GRpcServer struct {
-	app                 core.IApp
-	conf                *ServerConfig
-	server              *grpc.Server
-	httpGatewayHandlers []GrpcHttpGatewayHandler
+	app    core.IApp
+	conf   *ServerConfig
+	server *grpc.Server
+	gw     *gateway.Gateway
 }
 
 func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...RequestHook) (*GRpcServer, error) {
@@ -81,10 +84,12 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...RequestHook) (*GR
 		grpc.ChainUnaryInterceptor(RecoveryInterceptor()),     // 最终执行也要单独加一个恢复器
 	)
 
+	gw := gateway.NewGateway(app, conf.HttpBind)
 	g := &GRpcServer{
 		app:    app,
 		server: server,
 		conf:   conf,
+		gw:     gw,
 	}
 	return g, nil
 }
@@ -95,21 +100,41 @@ func (g *GRpcServer) RegistryServerHandler(hs ...func(server ServiceRegistrar)) 
 	}
 }
 
-func (g *GRpcServer) Start() error {
+func (g *GRpcServer) RegistryHttpGatewayHandler(hs ...gateway.GrpcHttpGatewayHandler) {
 	if g.conf.HttpBind != "" {
-		return g.StartGateway()
+		g.gw.RegistryHttpGatewayHandler(hs...)
 	}
+}
+
+func (g *GRpcServer) Start() error {
 	listener, err := net.Listen("tcp", g.conf.Bind)
 	if err != nil {
 		return err
 	}
 
+	if g.conf.HttpBind != "" {
+		serverPort := listener.Addr().(*net.TCPAddr).Port
+		go func() {
+			err := g.gw.StartGateway(serverPort, g.conf.TLSCertFile, g.conf.TLSDomain)
+			if err != nil && err != http.ErrServerClosed {
+				g.app.Fatal("grpc网关启动失败", zap.Error(err))
+			}
+		}()
+	}
+
 	g.app.Info("正在启动grpc服务", zap.String("bind", listener.Addr().String()))
-	return g.server.Serve(listener)
+	err = g.server.Serve(listener)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (g *GRpcServer) Close() {
 	g.server.GracefulStop()
+	if g.conf.HttpBind != "" {
+		g.gw.Close()
+	}
 	g.app.Warn("grpc服务已关闭")
 }
 
