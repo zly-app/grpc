@@ -21,9 +21,9 @@ import (
 const (
 	GatewayMetadataMethod  = "gw.method"
 	GatewayMetadataPath    = "gw.path-bin"
-	GatewayMetadataParams  = "gw.params-bin"
-	GatewayMetadataIP      = "gw.ip-bin"
 	GatewayMetadataHeaders = "gw.headers-bin"
+	GatewayMetadataIP      = "gw.ip-bin"
+	GatewayMetadataParams  = "gw.params-bin"
 )
 
 type GrpcHttpGatewayHandler = func(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error
@@ -90,7 +90,7 @@ func gatewayMetadataAnnotator(ctx context.Context, req *http.Request) metadata.M
 	ip := RequestExtractIP(req)
 	headers := req.Header
 
-	headersStorage := make([]string, len(headers)*2)
+	headersStorage := make([]string, 0, len(headers)*2)
 	for k, vv := range headers {
 		headersStorage = append(headersStorage, k, strings.Join(vv, ";"))
 	}

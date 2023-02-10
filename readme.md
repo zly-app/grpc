@@ -276,9 +276,7 @@ pb/hello/hello.proto
 
 ```git
 // 注册网关服务handler
-grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *grpc.ServeMux, conn *grpc.ClientConn) error {
-    return hello.RegisterHelloServiceHandler(ctx, mux, conn)
-})
+grpc.RegistryHttpGatewayHandler(hello.RegisterHelloServiceHandler)
 ```
 
 完整文件如下
@@ -317,9 +315,7 @@ func main() {
 	})
 
    // 注册网关服务handler
-	grpc.RegistryHttpGatewayHandler(func(ctx context.Context, mux *grpc.ServeMux, conn *grpc.ClientConn) error {
-		return hello.RegisterHelloServiceHandler(ctx, mux, conn)
-	})
+	grpc.RegistryHttpGatewayHandler(hello.RegisterHelloServiceHandler)
 
 	app.Run()
 }
