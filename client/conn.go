@@ -8,6 +8,7 @@ import (
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/opentracing/opentracing-go"
 	open_log "github.com/opentracing/opentracing-go/log"
 	"github.com/zly-app/zapp/core"
@@ -172,7 +173,9 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 		chainUnaryClientList = append(chainUnaryClientList, UnaryClientOpenTraceInterceptor)
 	}
 	chainUnaryClientList = append(chainUnaryClientList,
+		ctxTagsInterceptor(),                 // 设置标记
 		UnaryClientLogInterceptor(app, conf), // 日志
+		RecoveryInterceptor(),                // panic恢复
 	)
 	opts = append(opts, grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(chainUnaryClientList...)))
 
@@ -215,8 +218,20 @@ func UnaryClientLogInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClie
 
 		err := invoker(ctx, method, req, reply, cc, opts...)
 		if err != nil {
-			log.Error("grpc.response", zap.String("latency", time.Since(startTime).String()),
-				zap.Uint32("code", uint32(status.Code(err))), zap.Error(err))
+			opts := []interface{}{
+				"grpc.response",
+				zap.String("latency", time.Since(startTime).String()),
+				zap.Uint32("code", uint32(status.Code(err))),
+				zap.Error(err),
+			}
+
+			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
+			if hasPanic {
+				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
+				opts = append(opts, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
+			}
+
+			log.Error(opts...)
 			return err
 		}
 

@@ -81,7 +81,6 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		}),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(chainUnaryClientList...)),
 		grpc.ChainUnaryInterceptor(HookInterceptor(hooks...)), // 请求拦截
-		grpc.ChainUnaryInterceptor(RecoveryInterceptor()),     // 最终执行也要单独加一个恢复器
 	)
 
 	gw := gateway.NewGateway(app, conf.HttpBind)
@@ -157,7 +156,9 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 		if err != nil {
 			opts := []interface{}{
 				"grpc.response",
-				zap.String("latency", time.Since(startTime).String()), zap.Error(err),
+				zap.String("latency", time.Since(startTime).String()),
+				zap.Uint32("code", uint32(status.Code(err))),
+				zap.Error(err),
 			}
 
 			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)

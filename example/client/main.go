@@ -28,7 +28,7 @@ func main() {
 	// 调用
 	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
 	if err != nil {
-		app.Fatal(resp)
+		app.Fatal(err)
 	}
 	app.Info("收到结果", resp.GetMsg())
 }
