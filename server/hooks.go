@@ -5,8 +5,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-type RequestHook = grpc.UnaryServerInterceptor
+type ServerHook = grpc.UnaryServerInterceptor
 
-func HookInterceptor(hooks ...RequestHook) grpc.UnaryServerInterceptor {
+func HookInterceptor(hooks ...ServerHook) grpc.UnaryServerInterceptor {
 	return grpc_middleware.ChainUnaryServer(hooks...)
 }

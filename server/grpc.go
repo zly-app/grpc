@@ -38,7 +38,7 @@ type GRpcServer struct {
 	gw     *gateway.Gateway
 }
 
-func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...RequestHook) (*GRpcServer, error) {
+func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRpcServer, error) {
 	if err := conf.Check(); err != nil {
 		return nil, fmt.Errorf("GrpcServer配置检查失败: %v", err)
 	}

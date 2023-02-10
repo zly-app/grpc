@@ -16,11 +16,11 @@ type ServiceRegistrar = server.ServiceRegistrar
 
 type UnaryServerInfo = grpc.UnaryServerInfo
 type UnaryHandler = grpc.UnaryHandler
-type RequestHook = func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (resp interface{}, err error)
+type ServerHook = func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (resp interface{}, err error)
 
 // 启用grpc服务
-var WithService = func(hooks ...RequestHook) zapp.Option {
-	wrapHooks := make([]server.RequestHook, len(hooks))
+var WithService = func(hooks ...ServerHook) zapp.Option {
+	wrapHooks := make([]server.ServerHook, len(hooks))
 	for i, h := range hooks {
 		wrapHooks[i] = h
 	}

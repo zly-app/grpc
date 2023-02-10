@@ -24,7 +24,7 @@ func SetServiceType(t core.ServiceType) {
 }
 
 // 启用grpc服务
-func WithService(hooks ...RequestHook) zapp.Option {
+func WithService(hooks ...ServerHook) zapp.Option {
 	service.RegisterCreatorFunc(nowServiceType, func(app core.IApp) core.IService {
 		return NewServiceAdapter(app, hooks...)
 	})
@@ -67,7 +67,7 @@ func (s *ServiceAdapter) Close() error {
 	return nil
 }
 
-func NewServiceAdapter(app core.IApp, hooks ...RequestHook) core.IService {
+func NewServiceAdapter(app core.IApp, hooks ...ServerHook) core.IService {
 	conf := NewServerConfig()
 	err := app.GetConfig().ParseServiceConfig(nowServiceType, conf, true)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/config"
 	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/pkg/zlog"
 
 	"github.com/zly-app/grpc/client"
 	"github.com/zly-app/grpc/example/pb/hello"
@@ -20,7 +21,7 @@ func makeHelloClient(poolSize int) (core.IApp, hello.HelloServiceClient) {
 	testOnce.Do(func() {
 		grpcConf := client.NewClientConfig()
 		grpcConf.Address = "localhost:3000"
-		grpcConf.ConnPoolSize = poolSize
+		grpcConf.MaxActive = poolSize
 		conf := &core.Config{
 			Components: map[string]map[string]interface{}{
 				"grpc": {
@@ -28,6 +29,8 @@ func makeHelloClient(poolSize int) (core.IApp, hello.HelloServiceClient) {
 				},
 			},
 		}
+		conf.Frame.Log = zlog.DefaultConfig
+		conf.Frame.Log.WriteToStream = false
 		app := zapp.NewApp("grpc-test", zapp.WithConfigOption(config.WithConfig(conf)))
 		testApp = app
 	})
