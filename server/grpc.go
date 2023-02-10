@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/gateway"
+	"github.com/zly-app/grpc/pkg"
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
@@ -43,17 +44,15 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		return nil, fmt.Errorf("GrpcServer配置检查失败: %v", err)
 	}
 
-	chainUnaryClientList := []grpc.UnaryServerInterceptor{}
-
-	if !conf.DisableOpenTrace {
-		chainUnaryClientList = append(chainUnaryClientList, UnaryServerOpenTraceInterceptor)
-	}
 	gPool := gpool.NewGPool(&gpool.GPoolConfig{
 		JobQueueSize: conf.MaxReqWaitQueueSize,
 		ThreadCount:  conf.ThreadCount,
 	})
+	chainUnaryClientList := []grpc.UnaryServerInterceptor{}
 	chainUnaryClientList = append(chainUnaryClientList,
 		grpc_ctxtags.UnaryServerInterceptor(), // 设置标记
+		ReturnErrorInterceptor(app, conf),     // 返回错误拦截
+		UnaryServerOpenTraceInterceptor,       // trace
 		UnaryServerLogInterceptor(app, conf),  // 日志
 		GPoolLimitInterceptor(gPool),          // 协程池限制
 		RecoveryInterceptor(),                 // panic恢复
@@ -137,9 +136,20 @@ func (g *GRpcServer) Close() {
 	g.app.Warn("grpc服务已关闭")
 }
 
+// 错误拦截
+func ReturnErrorInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
+	interceptorUnknownErr := !app.GetConfig().Config().Frame.Debug && !conf.SendDetailedErrorInProduction // 是否拦截未定义的错误
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		reply, err := handler(ctx, req)
+		if interceptorUnknownErr && err != nil && status.Code(err) == codes.Unknown { // 拦截未定义错误
+			return reply, status.Error(codes.Internal, "service internal error")
+		}
+		return reply, err
+	}
+}
+
 // 日志拦截器
 func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
-	interceptorUnknownErr := !app.GetConfig().Config().Frame.Debug && !conf.SendDetailedErrorInProduction // 是否拦截未定义的错误
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		log := app.NewTraceLogger(ctx, zap.String("grpc.method", info.FullMethod))
 		ctx = utils.Ctx.SaveLogger(ctx, log)
@@ -168,9 +178,6 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 			}
 
 			log.Error(opts...)
-			if interceptorUnknownErr && status.Code(err) == codes.Unknown { // 拦截未定义错误
-				return reply, status.Error(codes.Internal, "service internal error")
-			}
 			return reply, err
 		}
 
@@ -187,11 +194,51 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 func GPoolLimitInterceptor(pool core.IGPool) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (reply interface{}, err error) {
 		err, ok := pool.TryGoSync(func() error {
+			span := utils.Trace.GetSpan(ctx)
+			span.Finish()
+
+			span = opentracing.StartSpan("grpc.method."+info.FullMethod, opentracing.FollowsFrom(span.Context()))
+			ctx = utils.Trace.SaveSpan(ctx, span)
+			pkg.SpanLogDeadline(ctx, span)
+
+			// 取出元数据
+			md, ok := metadata.FromIncomingContext(ctx)
+			if ok {
+				// 如果对元数据修改必须使用它的副本
+				md = md.Copy()
+			} else {
+				md = metadata.New(nil)
+			}
+			// 注入
+			carrier := TextMapCarrier{md}
+			_ = opentracing.GlobalTracer().Inject(span.Context(), opentracing.TextMap, carrier)
+			ctx = metadata.NewOutgoingContext(ctx, md)
+
 			reply, err = handler(ctx, req)
 			return err
 		})
-		if !ok {
-			return nil, errors.New("gPool Limit")
+
+		span := utils.Trace.GetSpan(ctx)
+		defer span.Finish()
+		if !ok { // 没有执行
+			err = errors.New("gPool Limit")
+		}
+
+		span.SetTag("method", info.FullMethod)
+		span.LogFields(open_log.Object("req", req))
+
+		if err != nil {
+			span.SetTag("code", uint32(status.Code(err)))
+			span.SetTag("error", true)
+			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
+			if hasPanic {
+				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
+				span.SetTag("panic", true)
+				span.LogFields(open_log.String("panic.detail", panicErrDetail))
+			}
+			span.LogFields(open_log.Error(err))
+		} else {
+			span.LogFields(open_log.Object("reply", reply))
 		}
 		return reply, err
 	}
@@ -219,31 +266,18 @@ func UnaryServerOpenTraceInterceptor(ctx context.Context, req interface{}, info 
 	if ok {
 		// 如果对元数据修改必须使用它的副本
 		md = md.Copy()
+	} else {
+		md = metadata.New(nil)
 	}
 
 	// 从元数据中取出span
 	carrier := TextMapCarrier{md}
 	parentSpan, _ := opentracing.GlobalTracer().Extract(opentracing.TextMap, carrier)
 
-	span := opentracing.StartSpan("grpc."+info.FullMethod, opentracing.ChildOf(parentSpan))
-	defer span.Finish()
-	ctx = utils.Trace.SaveSpan(ctx, span)
+	span := opentracing.StartSpan("pool.wait", opentracing.ChildOf(parentSpan))
 
-	span.LogFields(open_log.Object("req", req))
-	reply, err := handler(ctx, req)
-	if err != nil {
-		span.SetTag("error", true)
-		hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
-		if hasPanic {
-			panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
-			span.SetTag("panic", true)
-			span.SetTag("panic.detail", panicErrDetail)
-		}
-		span.LogFields(open_log.Error(err))
-	} else {
-		span.LogFields(open_log.Object("reply", reply))
-	}
-	return reply, err
+	ctx = utils.Trace.SaveSpan(ctx, span)
+	return handler(ctx, req)
 }
 
 type ValidateInterface interface {
