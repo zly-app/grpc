@@ -10,8 +10,6 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/opentracing/opentracing-go"
-	open_log "github.com/opentracing/opentracing-go/log"
 	"github.com/zly-app/zapp/component/gpool"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/logger"
@@ -22,7 +20,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/gateway"
@@ -194,90 +191,26 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 func GPoolLimitInterceptor(pool core.IGPool) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (reply interface{}, err error) {
 		err, ok := pool.TryGoSync(func() error {
-			span := utils.Trace.GetSpan(ctx)
-			span.Finish()
-
-			span = opentracing.StartSpan("grpc.method."+info.FullMethod, opentracing.FollowsFrom(span.Context()))
-			ctx = utils.Trace.SaveSpan(ctx, span)
-			pkg.SpanLogDeadline(ctx, span)
-
-			// 取出元数据
-			md, ok := metadata.FromIncomingContext(ctx)
-			if ok {
-				// 如果对元数据修改必须使用它的副本
-				md = md.Copy()
-			} else {
-				md = metadata.New(nil)
-			}
-			// 注入
-			carrier := TextMapCarrier{md}
-			_ = opentracing.GlobalTracer().Inject(span.Context(), opentracing.TextMap, carrier)
-			ctx = metadata.NewOutgoingContext(ctx, md)
-
+			pkg.TraceReq(ctx, req)
 			reply, err = handler(ctx, req)
 			return err
 		})
 
-		span := utils.Trace.GetSpan(ctx)
-		defer span.Finish()
 		if !ok { // 没有执行
 			err = errors.New("gPool Limit")
-		}
-
-		span.SetTag("method", info.FullMethod)
-		span.LogFields(open_log.Object("req", req))
-
-		if err != nil {
-			span.SetTag("code", uint32(status.Code(err)))
-			span.SetTag("error", true)
-			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
-			if hasPanic {
-				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
-				span.SetTag("panic", true)
-				span.LogFields(open_log.String("panic.detail", panicErrDetail))
-			}
-			span.LogFields(open_log.Error(err))
-		} else {
-			span.LogFields(open_log.Object("reply", reply))
 		}
 		return reply, err
 	}
 }
 
-type TextMapCarrier struct {
-	metadata.MD
-}
-
-func (t TextMapCarrier) ForeachKey(handler func(key, val string) error) error {
-	for k, v := range t.MD {
-		for _, vv := range v {
-			if err := handler(k, vv); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // 开放链路追踪hook
 func UnaryServerOpenTraceInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	// 取出元数据
-	md, ok := metadata.FromIncomingContext(ctx)
-	if ok {
-		// 如果对元数据修改必须使用它的副本
-		md = md.Copy()
-	} else {
-		md = metadata.New(nil)
-	}
+	ctx = pkg.TraceStart(ctx, info.FullMethod)
+	defer pkg.TraceEnd(ctx)
 
-	// 从元数据中取出span
-	carrier := TextMapCarrier{md}
-	parentSpan, _ := opentracing.GlobalTracer().Extract(opentracing.TextMap, carrier)
-
-	span := opentracing.StartSpan("pool.wait", opentracing.ChildOf(parentSpan))
-
-	ctx = utils.Trace.SaveSpan(ctx, span)
-	return handler(ctx, req)
+	reply, err := handler(ctx, req)
+	pkg.TraceReply(ctx, reply, err)
+	return reply, err
 }
 
 type ValidateInterface interface {

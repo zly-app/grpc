@@ -9,8 +9,6 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/opentracing/opentracing-go"
-	open_log "github.com/opentracing/opentracing-go/log"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/pkg/utils"
 	"github.com/zlyuancn/connpool"
@@ -19,7 +17,6 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/balance"
@@ -38,29 +35,12 @@ type GRpcClient struct {
 }
 
 func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
-	// 取出元数据
-	md, ok := metadata.FromIncomingContext(ctx)
-	if ok {
-		// 如果对元数据修改必须使用它的副本
-		md = md.Copy()
-	} else {
-		md = metadata.New(nil)
-	}
-
-	// 从元数据中取出span
-	carrier := TextMapCarrier{md}
-	parentSpan, _ := opentracing.GlobalTracer().Extract(opentracing.TextMap, carrier)
-
-	span := opentracing.StartSpan("pool.wait", opentracing.ChildOf(parentSpan))
+	ctx = pkg.TraceStart(ctx, method)
+	defer pkg.TraceEnd(ctx)
 
 	conn, err := g.pool.Get(ctx)
 	if err == nil {
-		span.Finish()
-
-		span = opentracing.StartSpan("grpc.method."+method, opentracing.FollowsFrom(span.Context()))
-		ctx = utils.Trace.SaveSpan(ctx, span)
-		pkg.SpanLogDeadline(ctx, span)
-
+		pkg.TraceReq(ctx, args)
 		ctx, opts = pkg.InjectTargetToCtx(ctx, opts)
 		ctx, opts = pkg.InjectHashKeyToCtx(ctx, opts)
 		v := conn.GetConn().(*grpc.ClientConn)
@@ -68,25 +48,7 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 		g.pool.Put(conn)
 	}
 
-	defer span.Finish()
-
-	span.SetTag("method", method)
-	span.LogFields(open_log.Object("req", args))
-
-	if err != nil {
-		span.SetTag("code", uint32(status.Code(err)))
-		span.SetTag("error", true)
-		hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
-		if hasPanic {
-			panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
-			span.SetTag("panic", true)
-			span.LogFields(open_log.String("panic.detail", panicErrDetail))
-		}
-		span.LogFields(open_log.Error(err))
-	} else {
-		span.LogFields(open_log.Object("reply", reply))
-	}
-
+	pkg.TraceReply(ctx, reply, err)
 	return err
 }
 
@@ -210,7 +172,6 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 	chainUnaryClientList := []grpc.UnaryClientInterceptor{}
 	chainUnaryClientList = append(chainUnaryClientList,
 		ctxTagsInterceptor(),                 // 设置标记
-		UnaryClientOpenTraceInterceptor,      // trace
 		UnaryClientLogInterceptor(app, conf), // 日志
 		RecoveryInterceptor(),                // panic恢复
 	)
@@ -233,29 +194,28 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 	return conn, nil
 }
 
-type TextMapCarrier struct {
-	metadata.MD
-}
-
-func (t TextMapCarrier) Set(key, val string) {
-	t.MD[key] = append(t.MD[key], val)
-}
-
 // 日志
 func UnaryClientLogInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		log := app.NewTraceLogger(ctx, zap.String("grpc.method", method))
-
 		startTime := time.Now()
+
+		reqLogFields := []interface{}{
+			ctx,
+			"grpc.request",
+			zap.String("grpc.method", method),
+			zap.Any("req", req),
+		}
 		if conf.ReqLogLevelIsInfo {
-			log.Info("grpc.request", zap.Any("req", req))
+			app.Info(reqLogFields...)
 		} else {
-			log.Debug("grpc.request", zap.Any("req", req))
+			app.Debug(reqLogFields...)
 		}
 
 		err := invoker(ctx, method, req, reply, cc, opts...)
 		if err != nil {
-			opts := []interface{}{
+			logFields := []interface{}{
+				ctx,
+				zap.String("grpc.method", method),
 				"grpc.response",
 				zap.String("latency", time.Since(startTime).String()),
 				zap.Uint32("code", uint32(status.Code(err))),
@@ -265,40 +225,26 @@ func UnaryClientLogInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClie
 			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
 			if hasPanic {
 				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
-				opts = append(opts, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
+				logFields = append(logFields, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
 			}
 
-			log.Error(opts...)
+			app.Error(logFields...)
 			return err
 		}
 
+		replyLogFields := []interface{}{
+			ctx,
+			"grpc.response",
+			zap.String("grpc.method", method),
+			zap.String("latency", time.Since(startTime).String()),
+			zap.Any("reply", reply),
+		}
 		if conf.RspLogLevelIsInfo {
-			log.Info("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Any("reply", reply))
+			app.Info(replyLogFields...)
 		} else {
-			log.Debug("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Any("reply", reply))
+			app.Debug(replyLogFields...)
 		}
 
 		return err
 	}
-}
-
-// 开放链路追踪hook
-func UnaryClientOpenTraceInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	span := utils.Trace.GetSpan(ctx)
-
-	// 取出元数据
-	md, ok := metadata.FromIncomingContext(ctx)
-	if ok {
-		// 如果对元数据修改必须使用它的副本
-		md = md.Copy()
-	} else {
-		md = metadata.New(nil)
-	}
-	// 注入
-	carrier := TextMapCarrier{md}
-	_ = opentracing.GlobalTracer().Inject(span.Context(), opentracing.TextMap, carrier)
-	ctx = metadata.NewOutgoingContext(ctx, md)
-
-	err := invoker(ctx, method, req, reply, cc, opts...)
-	return err
 }
