@@ -215,8 +215,8 @@ func UnaryClientLogInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClie
 		if err != nil {
 			logFields := []interface{}{
 				ctx,
-				zap.String("grpc.method", method),
 				"grpc.response",
+				zap.String("grpc.method", method),
 				zap.String("latency", time.Since(startTime).String()),
 				zap.Uint32("code", uint32(status.Code(err))),
 				zap.Error(err),

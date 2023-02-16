@@ -11,21 +11,48 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	traceparentHeader = "traceparent"
+	tracestateHeader  = "tracestate"
+)
+
 func TraceStart(ctx context.Context, method string) context.Context {
-	// 取出元数据
-	md, ok := metadata.FromIncomingContext(ctx)
+	// 取出 in 元数据
+	mdIn, _ := metadata.FromIncomingContext(ctx)
+	// 取出 out 元数据
+	mdOut, ok := metadata.FromOutgoingContext(ctx)
 	if ok {
 		// 如果对元数据修改必须使用它的副本
-		md = md.Copy()
+		mdOut = mdOut.Copy()
 	} else {
-		md = metadata.New(nil)
+		mdOut = metadata.New(nil)
 	}
 
-	ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, http.Header(md))
+	// 提取 trace
+	inTraceparent, inTracestate := mdIn.Get(traceparentHeader), mdIn.Get(tracestateHeader)
+	inTraceHeader := http.Header{}
+	for _, v := range inTraceparent {
+		inTraceHeader.Add(traceparentHeader, v)
+	}
+	for _, v := range inTracestate {
+		inTraceHeader.Add(tracestateHeader, v)
+	}
+	ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, inTraceHeader)
+
+	// 生成新的 span
 	ctx, _ = utils.Otel.StartSpan(ctx, "grpc.method."+method,
 		utils.OtelSpanKey("method").String(method))
-	utils.Otel.SaveToHeaders(ctx, http.Header(md))
-	ctx = metadata.NewIncomingContext(ctx, md)
+
+	// 提取 trace 并重新写入, 由于写入时通过 http.Header 将 key 转换为大写, 儿 metadata 不支持大写 key, 所以需要转换为小写
+	outTraceHeader := http.Header{}
+	utils.Otel.SaveToHeaders(ctx, outTraceHeader)
+	outTraceparent, outTracestate := outTraceHeader.Get(traceparentHeader), outTraceHeader.Get(tracestateHeader)
+	mdOut.Set(traceparentHeader, outTraceparent)
+	if outTracestate != "" {
+		mdOut.Set(tracestateHeader, outTracestate)
+	}
+
+	ctx = metadata.NewOutgoingContext(ctx, mdOut)
 	return ctx
 }
 
@@ -46,7 +73,7 @@ func getOtelSpanKVWithDeadline(ctx context.Context) utils.OtelSpanKV {
 func TraceReq(ctx context.Context, req interface{}) {
 	span := utils.Otel.GetSpan(ctx)
 	msg, _ := jsoniter.MarshalToString(req)
-	utils.Otel.AddSpanEvent(span, "send",
+	utils.Otel.AddSpanEvent(span, "req",
 		utils.OtelSpanKey("msg").String(msg),
 		getOtelSpanKVWithDeadline(ctx),
 	)

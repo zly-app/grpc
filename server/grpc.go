@@ -148,21 +148,27 @@ func ReturnErrorInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerI
 // 日志拦截器
 func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		log := app.NewTraceLogger(ctx, zap.String("grpc.method", info.FullMethod))
-		ctx = utils.Ctx.SaveLogger(ctx, log)
-
 		startTime := time.Now()
+
+		reqLogFields := []interface{}{
+			ctx,
+			"grpc.request",
+			zap.String("grpc.method", info.FullMethod),
+			zap.Any("req", req),
+		}
 		if conf.ReqLogLevelIsInfo {
-			log.Info("grpc.request", zap.Any("req", req))
+			app.Info(reqLogFields...)
 		} else {
-			log.Debug("grpc.request", zap.Any("req", req))
+			app.Debug(reqLogFields...)
 		}
 
 		reply, err := handler(ctx, req)
 
 		if err != nil {
-			opts := []interface{}{
+			logFields := []interface{}{
+				ctx,
 				"grpc.response",
+				zap.String("grpc.method", info.FullMethod),
 				zap.String("latency", time.Since(startTime).String()),
 				zap.Uint32("code", uint32(status.Code(err))),
 				zap.Error(err),
@@ -171,17 +177,24 @@ func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
 			if hasPanic {
 				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
-				opts = append(opts, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
+				logFields = append(logFields, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
 			}
 
-			log.Error(opts...)
+			app.Error(logFields...)
 			return reply, err
 		}
 
+		replyLogFields := []interface{}{
+			ctx,
+			"grpc.response",
+			zap.String("grpc.method", info.FullMethod),
+			zap.String("latency", time.Since(startTime).String()),
+			zap.Any("reply", reply),
+		}
 		if conf.RspLogLevelIsInfo {
-			log.Info("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Any("reply", reply))
+			app.Info(replyLogFields...)
 		} else {
-			log.Debug("grpc.response", zap.String("latency", time.Since(startTime).String()), zap.Any("reply", reply))
+			app.Debug(replyLogFields...)
 		}
 
 		return reply, err
