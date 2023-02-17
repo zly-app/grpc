@@ -10,6 +10,7 @@ require (
 	github.com/zly-app/zapp v1.3.2
 	github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd
 	github.com/zlyuancn/zbalancer v1.1.0
+	go.opentelemetry.io/otel v1.13.0
 	go.uber.org/zap v1.21.0
 	google.golang.org/genproto v0.0.0-20230209215440-0dfe4f8abfcc
 	google.golang.org/grpc v1.53.0
@@ -35,7 +36,6 @@ require (
 	github.com/spf13/viper v1.7.1 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/takama/daemon v1.0.0 // indirect
-	go.opentelemetry.io/otel v1.13.0 // indirect
 	go.opentelemetry.io/otel/trace v1.13.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/automaxprocs v1.5.1 // indirect

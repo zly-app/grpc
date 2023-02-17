@@ -2,11 +2,13 @@ package pkg
 
 import (
 	"context"
-	"net/http"
+	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/zly-app/zapp/pkg/utils"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -28,29 +30,15 @@ func TraceStart(ctx context.Context, method string) context.Context {
 		mdOut = metadata.New(nil)
 	}
 
-	// 提取 trace
-	inTraceparent, inTracestate := mdIn.Get(traceparentHeader), mdIn.Get(tracestateHeader)
-	inTraceHeader := http.Header{}
-	for _, v := range inTraceparent {
-		inTraceHeader.Add(traceparentHeader, v)
-	}
-	for _, v := range inTracestate {
-		inTraceHeader.Add(tracestateHeader, v)
-	}
-	ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, inTraceHeader)
+	tm := TextMapCarrier{mdIn}
+	ctx = otel.GetTextMapPropagator().Extract(ctx, tm)
 
 	// 生成新的 span
 	ctx, _ = utils.Otel.StartSpan(ctx, "grpc.method."+method,
 		utils.OtelSpanKey("method").String(method))
 
-	// 提取 trace 并重新写入, 由于写入时通过 http.Header 将 key 转换为大写, 儿 metadata 不支持大写 key, 所以需要转换为小写
-	outTraceHeader := http.Header{}
-	utils.Otel.SaveToHeaders(ctx, outTraceHeader)
-	outTraceparent, outTracestate := outTraceHeader.Get(traceparentHeader), outTraceHeader.Get(tracestateHeader)
-	mdOut.Set(traceparentHeader, outTraceparent)
-	if outTracestate != "" {
-		mdOut.Set(tracestateHeader, outTracestate)
-	}
+	tm = TextMapCarrier{mdOut}
+	otel.GetTextMapPropagator().Inject(ctx, tm)
 
 	ctx = metadata.NewOutgoingContext(ctx, mdOut)
 	return ctx
@@ -108,3 +96,34 @@ func TracePanic(ctx context.Context, err error) {
 		getOtelSpanKVWithDeadline(ctx),
 	)
 }
+
+type TextMapCarrier struct {
+	md metadata.MD
+}
+
+func (t TextMapCarrier) Get(key string) string {
+	key = strings.ToLower(key)
+	vs := t.md[key]
+	if len(vs) > 0 {
+		return vs[0]
+	}
+	return ""
+}
+
+func (t TextMapCarrier) Set(key string, value string) {
+	if value == "" {
+		return
+	}
+	key = strings.ToLower(key)
+	t.md[key] = []string{value}
+}
+
+func (t TextMapCarrier) Keys() []string {
+	keys := make([]string, 0, len(t.md))
+	for k := range t.md {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+var _ propagation.TextMapCarrier = (*TextMapCarrier)(nil)
