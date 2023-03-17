@@ -74,8 +74,11 @@ func NewClientConfig() *ClientConfig {
 		ReqLogLevelIsInfo: defReqLogLevelIsInfo,
 		RspLogLevelIsInfo: defRspLogLevelIsInfo,
 
-		WaitFirstConn: defWaitFirstConn,
-		MaxActive:     defMaxActive,
+		WaitFirstConn:    defWaitFirstConn,
+		MaxActive:        defMaxActive,
+		ConnIdleTimeout:  defConnIdleTimeout,
+		MaxWaitConnCount: defMaxWaitConnCount,
+		MaxConnLifetime:  defMaxConnLifetime,
 	}
 }
 
@@ -109,19 +112,19 @@ func (conf *ClientConfig) Check() error {
 		conf.BatchShrink = defBatchShrink
 	}
 	if conf.ConnIdleTimeout < 1 {
-		conf.ConnIdleTimeout = defConnIdleTimeout
+		conf.ConnIdleTimeout = 0
 	}
 	if conf.WaitTimeout < 1 {
 		conf.WaitTimeout = defWaitTimeout
 	}
 	if conf.MaxWaitConnCount < 1 {
-		conf.MaxWaitConnCount = defMaxWaitConnCount
+		conf.MaxWaitConnCount = 0
 	}
 	if conf.ConnectTimeout < 1 {
 		conf.ConnectTimeout = defConnectTimeout
 	}
 	if conf.MaxConnLifetime < 1 {
-		conf.MaxConnLifetime = defMaxConnLifetime
+		conf.MaxConnLifetime = 0
 	}
 	if conf.CheckIdleInterval < 1 {
 		conf.CheckIdleInterval = defCheckIdleInterval
