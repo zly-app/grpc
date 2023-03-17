@@ -25,6 +25,8 @@ const (
 	defReqLogLevelIsInfo = true
 	// 是否设置响应日志等级设为info
 	defRspLogLevelIsInfo = true
+	// 处理超时, 单位秒, <1表示不限制
+	defProcessTimeout = 1
 	// 是否启用请求数据校验
 	defReqDataValidate = true
 	// 是否对请求数据校验所有字段
@@ -42,6 +44,7 @@ type ServerConfig struct {
 	HeartbeatTime                 int    // 心跳时间, 单位秒
 	ReqLogLevelIsInfo             bool   // 是否设置请求日志等级设为info
 	RspLogLevelIsInfo             bool   // 是否设置响应日志等级设为info
+	ProcessTimeout                int    // 处理超时, 单位秒, <1表示不限制
 	ReqDataValidate               bool   // 是否启用请求数据校验
 	ReqDataValidateAllField       bool   // 是否对请求数据校验所有字段. 如果设为true, 会对所有字段校验并返回所有的错误. 如果设为false, 校验错误会立即返回.
 	SendDetailedErrorInProduction bool   // 在生产环境发送详细的错误到客户端. 如果设为 false, 在生产环境且错误状态码为 Unknown, 则会返回 service internal error 给客户端.
@@ -62,6 +65,7 @@ func NewServerConfig() *ServerConfig {
 		HeartbeatTime:           defHeartbeatTime,
 		ReqLogLevelIsInfo:       defReqLogLevelIsInfo,
 		RspLogLevelIsInfo:       defRspLogLevelIsInfo,
+		ProcessTimeout:          defProcessTimeout,
 		ReqDataValidate:         defReqDataValidate,
 		ReqDataValidateAllField: defReqDataValidateAllField,
 		ThreadCount:             defThreadCount,

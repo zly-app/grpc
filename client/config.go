@@ -16,6 +16,8 @@ const (
 	defReqLogLevelIsInfo = true
 	// 是否设置响应日志等级设为info
 	defRspLogLevelIsInfo = true
+	// 请求超时, 单位秒, <1表示不限制
+	defReqTimeout = 1
 
 	// 初始化时等待第一个链接
 	defWaitFirstConn = true
@@ -50,6 +52,7 @@ type ClientConfig struct {
 	Balance           string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
 	ReqLogLevelIsInfo bool   // 是否将请求日志等级设为info
 	RspLogLevelIsInfo bool   // 是否将响应日志等级设为info
+	ReqTimeout        int    // 请求超时, 单位秒, <1表示不限制
 
 	WaitFirstConn     bool // 初始化时等待第一个链接
 	MinIdle           int  // 最小闲置
@@ -73,6 +76,7 @@ func NewClientConfig() *ClientConfig {
 	return &ClientConfig{
 		ReqLogLevelIsInfo: defReqLogLevelIsInfo,
 		RspLogLevelIsInfo: defRspLogLevelIsInfo,
+		ReqTimeout:        defReqTimeout,
 
 		WaitFirstConn:    defWaitFirstConn,
 		MaxActive:        defMaxActive,

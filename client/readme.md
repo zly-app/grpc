@@ -121,6 +121,7 @@ components:
          DisableOpenTrace: false # 是否关闭OpenTrace
          ReqLogLevelIsInfo: true # 是否将请求日志等级设为info
          RspLogLevelIsInfo: true # 是否将响应日志等级设为info
+         ReqTimeout: 1 # 请求超时, 单位秒, <1表示不限制
          WaitFirstConn: true # 初始化时等待第一个链接
          MinIdle: 2 # 最小闲置
          MaxIdle: 4 # 最大闲置

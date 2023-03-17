@@ -47,6 +47,7 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 	})
 	chainUnaryClientList := []grpc.UnaryServerInterceptor{}
 	chainUnaryClientList = append(chainUnaryClientList,
+		ProcessTimeoutInterceptor(app, conf),  // 处理超时
 		grpc_ctxtags.UnaryServerInterceptor(), // 设置标记
 		ReturnErrorInterceptor(app, conf),     // 返回错误拦截
 		UnaryServerOpenTraceInterceptor,       // trace
@@ -131,6 +132,18 @@ func (g *GRpcServer) Close() {
 		g.gw.Close()
 	}
 	g.app.Warn("grpc服务已关闭")
+}
+
+func ProcessTimeoutInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if conf.ProcessTimeout < 1 {
+			return handler(ctx, req)
+		}
+
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(conf.ProcessTimeout)*time.Second)
+		defer cancel()
+		return handler(ctx, req)
+	}
 }
 
 // 错误拦截

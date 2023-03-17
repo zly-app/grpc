@@ -171,6 +171,7 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 
 	chainUnaryClientList := []grpc.UnaryClientInterceptor{}
 	chainUnaryClientList = append(chainUnaryClientList,
+		ReqTimeoutInterceptor(app, conf),     // 请求超时
 		ctxTagsInterceptor(),                 // 设置标记
 		UnaryClientLogInterceptor(app, conf), // 日志
 		RecoveryInterceptor(),                // panic恢复
@@ -192,6 +193,18 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 		return nil, fmt.Errorf("grpc客户端连接失败: %v", err)
 	}
 	return conn, nil
+}
+
+func ReqTimeoutInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if conf.ReqTimeout < 1 {
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(conf.ReqTimeout)*time.Second)
+		defer cancel()
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
 }
 
 // 日志
