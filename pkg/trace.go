@@ -92,7 +92,7 @@ func TracePanic(ctx context.Context, err error) {
 	utils.Otel.SetSpanAttributes(span, utils.OtelSpanKey("panic").Bool(true))
 	panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
 	utils.Otel.AddSpanEvent(span, "panic",
-		utils.OtelSpanKey("detail").String(panicErrDetail),
+		utils.OtelSpanKey("panic.detail").String(panicErrDetail),
 		getOtelSpanKVWithDeadline(ctx),
 	)
 }
