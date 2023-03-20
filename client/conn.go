@@ -138,7 +138,7 @@ func makePool(conf *ClientConfig, creator connpool.Creator, connClose connpool.C
 		MaxActive:         conf.MaxActive,
 		BatchIncrement:    conf.BatchIncrement,
 		BatchShrink:       conf.BatchShrink,
-		IdleTimeout:       time.Duration(conf.ConnIdleTimeout) * time.Second,
+		IdleTimeout:       time.Duration(conf.IdleTimeout) * time.Second,
 		WaitTimeout:       time.Duration(conf.WaitTimeout) * time.Second,
 		MaxWaitConnCount:  conf.MaxWaitConnCount,
 		ConnectTimeout:    time.Duration(conf.ConnectTimeout) * time.Second,

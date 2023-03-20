@@ -128,7 +128,7 @@ components:
          MaxActive: 10 # 最大活跃连接数, 小于1表示不限制
          BatchIncrement: 4 # 批次增量, 当conn不够时, 一次性最多申请多少个链接
          BatchShrink: 4 # 批次缩容, 当conn太多时(超过最大闲置), 一次性最多释放多少个链接
-         ConnIdleTimeout: 3600 # 空闲链接超时时间, 单位秒, 如果一个连接长时间未使用将被视为连接无效, 小于1表示永不超时
+         IdleTimeout: 3600 # 空闲链接超时时间, 单位秒, 如果一个连接长时间未使用将被视为连接无效, 小于1表示永不超时
          WaitTimeout: 5 # 等待获取连接的超时时间, 单位秒
          MaxWaitConnCount: 2000 # 最大等待conn的数量, 小于1表示不限制
          ConnectTimeout: 5 # 连接超时, 单位秒

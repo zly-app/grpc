@@ -32,7 +32,7 @@ const (
 	// 批次缩容
 	defBatchShrink = defBatchIncrement
 	// 空闲链接超时时间
-	defConnIdleTimeout = 3600
+	defIdleTimeout = 3600
 	// 等待获取连接的超时时间
 	defWaitTimeout = 5
 	// 最大等待conn的数量
@@ -60,7 +60,7 @@ type ClientConfig struct {
 	MaxActive         int  // 最大活跃连接数, 小于1表示不限制
 	BatchIncrement    int  // 批次增量, 当conn不够时, 一次性最多申请多少个链接
 	BatchShrink       int  // 批次缩容, 当conn太多时(超过最大闲置), 一次性最多释放多少个链接
-	ConnIdleTimeout   int  // 空闲链接超时时间, 单位秒, 如果一个连接长时间未使用将被视为连接无效, 小于1表示永不超时
+	IdleTimeout       int  // 空闲链接超时时间, 单位秒, 如果一个连接长时间未使用将被视为连接无效, 小于1表示永不超时
 	WaitTimeout       int  // 等待获取连接的超时时间, 单位秒
 	MaxWaitConnCount  int  // 最大等待conn的数量, 小于1表示不限制
 	ConnectTimeout    int  // 连接超时, 单位秒
@@ -80,7 +80,7 @@ func NewClientConfig() *ClientConfig {
 
 		WaitFirstConn:    defWaitFirstConn,
 		MaxActive:        defMaxActive,
-		ConnIdleTimeout:  defConnIdleTimeout,
+		IdleTimeout:      defIdleTimeout,
 		MaxWaitConnCount: defMaxWaitConnCount,
 		MaxConnLifetime:  defMaxConnLifetime,
 	}
@@ -115,8 +115,8 @@ func (conf *ClientConfig) Check() error {
 	if conf.BatchShrink < 1 {
 		conf.BatchShrink = defBatchShrink
 	}
-	if conf.ConnIdleTimeout < 1 {
-		conf.ConnIdleTimeout = 0
+	if conf.IdleTimeout < 1 {
+		conf.IdleTimeout = 0
 	}
 	if conf.WaitTimeout < 1 {
 		conf.WaitTimeout = defWaitTimeout
