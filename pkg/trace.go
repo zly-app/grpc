@@ -18,6 +18,29 @@ const (
 	tracestateHeader  = "tracestate"
 )
 
+func TraceInjectIn(ctx context.Context) context.Context {
+	// 取出 in 元数据
+	mdIn, _ := metadata.FromIncomingContext(ctx)
+	tm := TextMapCarrier{mdIn}
+	ctx = otel.GetTextMapPropagator().Extract(ctx, tm)
+	return ctx
+}
+func TraceInjectOut(ctx context.Context) context.Context {
+	// 取出 out 元数据
+	mdOut, ok := metadata.FromOutgoingContext(ctx)
+	if ok {
+		// 如果对元数据修改必须使用它的副本
+		mdOut = mdOut.Copy()
+	} else {
+		mdOut = metadata.New(nil)
+	}
+
+	tm := TextMapCarrier{mdOut}
+	otel.GetTextMapPropagator().Inject(ctx, tm)
+	ctx = metadata.NewOutgoingContext(ctx, mdOut)
+	return ctx
+}
+
 func TraceStart(ctx context.Context, method string) context.Context {
 	// 取出 in 元数据
 	mdIn, _ := metadata.FromIncomingContext(ctx)

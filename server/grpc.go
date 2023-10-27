@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,9 +9,7 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/zly-app/zapp/component/gpool"
 	"github.com/zly-app/zapp/core"
-	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -22,7 +19,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/gateway"
-	"github.com/zly-app/grpc/pkg"
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
@@ -40,19 +36,11 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		return nil, fmt.Errorf("GrpcServer配置检查失败: %v", err)
 	}
 
-	gPool := gpool.NewGPool(&gpool.GPoolConfig{
-		JobQueueSize: conf.MaxReqWaitQueueSize,
-		ThreadCount:  conf.ThreadCount,
-	})
 	chainUnaryClientList := []grpc.UnaryServerInterceptor{}
 	chainUnaryClientList = append(chainUnaryClientList,
-		ProcessTimeoutInterceptor(app, conf),  // 处理超时
+		AppFilter,
 		grpc_ctxtags.UnaryServerInterceptor(), // 设置标记
 		ReturnErrorInterceptor(app, conf),     // 返回错误拦截
-		UnaryServerOpenTraceInterceptor,       // trace
-		UnaryServerLogInterceptor(app, conf),  // 日志
-		GPoolLimitInterceptor(gPool),          // 协程池限制
-		RecoveryInterceptor(),                 // panic恢复
 	)
 	if conf.ReqDataValidate && !conf.ReqDataValidateAllField {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryServerReqDataValidateInterceptor)
@@ -126,23 +114,6 @@ func (g *GRpcServer) Close() {
 	g.app.Warn("grpc服务已关闭")
 }
 
-func ProcessTimeoutInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if conf.ProcessTimeout < 1 {
-			return handler(ctx, req)
-		}
-
-		deadline, ok := ctx.Deadline()
-		if ok && time.Now().Add(time.Second*time.Duration(conf.ProcessTimeout)).After(deadline) { // 如果设置的超时时间在当前截止时间之后, 则设置超时时间是无意义的
-			return handler(ctx, req)
-		}
-
-		ctx, cancel := context.WithTimeout(ctx, time.Duration(conf.ProcessTimeout)*time.Second)
-		defer cancel()
-		return handler(ctx, req)
-	}
-}
-
 // 错误拦截
 func ReturnErrorInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
 	interceptorUnknownErr := !app.GetConfig().Config().Frame.Debug && !conf.SendDetailedErrorInProduction // 是否拦截未定义的错误
@@ -153,87 +124,6 @@ func ReturnErrorInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerI
 		}
 		return reply, err
 	}
-}
-
-// 日志拦截器
-func UnaryServerLogInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		startTime := time.Now()
-
-		reqLogFields := []interface{}{
-			ctx,
-			"grpc.request",
-			zap.String("grpc.method", info.FullMethod),
-			zap.Any("req", req),
-		}
-		if conf.ReqLogLevelIsInfo {
-			app.Info(reqLogFields...)
-		} else {
-			app.Debug(reqLogFields...)
-		}
-
-		reply, err := handler(ctx, req)
-
-		if err != nil {
-			logFields := []interface{}{
-				ctx,
-				"grpc.response",
-				zap.String("grpc.method", info.FullMethod),
-				zap.String("latency", time.Since(startTime).String()),
-				zap.Uint32("code", uint32(status.Code(err))),
-				zap.Error(err),
-			}
-
-			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
-			if hasPanic {
-				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
-				logFields = append(logFields, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
-			}
-
-			app.Error(logFields...)
-			return reply, err
-		}
-
-		replyLogFields := []interface{}{
-			ctx,
-			"grpc.response",
-			zap.String("grpc.method", info.FullMethod),
-			zap.String("latency", time.Since(startTime).String()),
-			zap.Any("reply", reply),
-		}
-		if conf.RspLogLevelIsInfo {
-			app.Info(replyLogFields...)
-		} else {
-			app.Debug(replyLogFields...)
-		}
-
-		return reply, err
-	}
-}
-
-func GPoolLimitInterceptor(pool core.IGPool) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (reply interface{}, err error) {
-		err, ok := pool.TryGoSync(func() error {
-			pkg.TraceReq(ctx, req)
-			reply, err = handler(ctx, req)
-			return err
-		})
-
-		if !ok { // 没有执行
-			err = errors.New("gPool Limit")
-		}
-		return reply, err
-	}
-}
-
-// 开放链路追踪hook
-func UnaryServerOpenTraceInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	ctx = pkg.TraceStart(ctx, info.FullMethod)
-	defer pkg.TraceEnd(ctx)
-
-	reply, err := handler(ctx, req)
-	pkg.TraceReply(ctx, reply, err)
-	return reply, err
 }
 
 type ValidateInterface interface {

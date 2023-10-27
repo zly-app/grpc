@@ -145,14 +145,9 @@ services:
       GatewayBind: ':8080' # 网关bind地址
 	  CloseWait: 3 # 关闭前等待时间, 单位秒
       HeartbeatTime: 20 # 心跳时间, 单位秒
-      ReqLogLevelIsInfo: true # 是否设置请求日志等级设为info
-      RspLogLevelIsInfo: true # 是否设置响应日志等级设为info
-      ProcessTimeout: 1 # 处理超时, 单位秒, <1表示不限制
       ReqDataValidate: true # 是否启用请求数据校验
       ReqDataValidateAllField: false # 是否对请求数据校验所有字段. 如果设为true, 会对所有字段校验并返回所有的错误. 如果设为false, 校验错误会立即返回.
       SendDetailedErrorInProduction: false # 在生产环境发送详细的错误到客户端. 如果设为 false, 在生产环境且错误状态码为 Unknown, 则会返回 service internal error 给客户端.
-      ThreadCount: 0 # 同时处理请求的goroutine数, 设为0时取逻辑cpu数*2, 设为负数时不作任何限制, 每个请求由独立的线程执行
-      MaxReqWaitQueueSize: 10000 # 最大请求等待队列大小
       TLSCertFile: '' # tls公钥文件路径
       TLSKeyFile: '' # tls私钥文件路径
 ```
