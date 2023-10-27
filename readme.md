@@ -144,7 +144,6 @@ services:
       Bind: :3000 # bind地址
       HttpBind: ':8080' # http绑定地址
       HeartbeatTime: 20 # 心跳时间, 单位秒
-      DisableOpenTrace: false # 是否关闭OpenTrace
       ReqLogLevelIsInfo: true # 是否设置请求日志等级设为info
       RspLogLevelIsInfo: true # 是否设置响应日志等级设为info
       ProcessTimeout: 1 # 处理超时, 单位秒, <1表示不限制

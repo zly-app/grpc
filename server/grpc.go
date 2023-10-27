@@ -140,6 +140,11 @@ func ProcessTimeoutInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServ
 			return handler(ctx, req)
 		}
 
+		deadline, ok := ctx.Deadline()
+		if ok && time.Now().Add(time.Second*time.Duration(conf.ProcessTimeout)).After(deadline) { // 如果设置的超时时间在当前截止时间之后, 则设置超时时间是无意义的
+			return handler(ctx, req)
+		}
+
 		ctx, cancel := context.WithTimeout(ctx, time.Duration(conf.ProcessTimeout)*time.Second)
 		defer cancel()
 		return handler(ctx, req)
