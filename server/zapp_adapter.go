@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/logger"
@@ -76,12 +75,4 @@ func newServiceAdapter(app core.IApp, hooks ...ServerHook) core.IService {
 		}
 	})
 	return defService
-}
-
-// 获取网关mux
-func GetGatewayMux() *runtime.ServeMux {
-	if defService == nil || defService.server.gw == nil {
-		logger.Log.Fatal("grpc 网关服务未启用")
-	}
-	return defService.server.gw.GetMux()
 }

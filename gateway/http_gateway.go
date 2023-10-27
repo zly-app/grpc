@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -24,38 +25,44 @@ const (
 )
 
 type Gateway struct {
-	app      core.IApp
-	httpBind string // 网关bind
-	gwMux    *runtime.ServeMux
-	server   *http.Server
+	app          core.IApp
+	bind         string // 网关bind
+	gwMux        *runtime.ServeMux
+	server       *http.Server
+	closeWaitSec int
 }
 
-func NewGateway(app core.IApp, httpBind string) *Gateway {
+func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
+	if err := conf.Check(); err != nil {
+		return nil, fmt.Errorf("Grpc网关配置检查失败: %v", err)
+	}
+
 	gwMux := runtime.NewServeMux(runtime.WithMetadata(gatewayMetadataAnnotator))
 	server := &http.Server{
-		Addr:    httpBind,
+		Addr:    conf.Bind,
 		Handler: gwMux,
 	}
 	return &Gateway{
-		app:      app,
-		httpBind: httpBind,
-		gwMux:    gwMux,
-		server:   server,
-	}
+		app:          app,
+		bind:         conf.Bind,
+		gwMux:        gwMux,
+		server:       server,
+		closeWaitSec: conf.CloseWait,
+	}, nil
 }
 
 func (g *Gateway) GetMux() *runtime.ServeMux {
 	return g.gwMux
 }
 
-func (g *Gateway) StartGateway(closeWaitSec int) error {
-	listener, err := net.Listen("tcp", g.httpBind)
+func (g *Gateway) StartGateway() error {
+	listener, err := net.Listen("tcp", g.bind)
 	if err != nil {
 		return err
 	}
 
 	handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(closeWaitSec)*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(g.closeWaitSec)*time.Second)
 		defer cancel()
 
 		err := g.server.Shutdown(ctx)

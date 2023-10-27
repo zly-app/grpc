@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -17,8 +16,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
-
-	"github.com/zly-app/grpc/gateway"
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
@@ -28,7 +25,6 @@ type GRpcServer struct {
 	app    core.IApp
 	conf   *ServerConfig
 	server *grpc.Server
-	gw     *gateway.Gateway
 }
 
 func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRpcServer, error) {
@@ -72,10 +68,6 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		server: server,
 		conf:   conf,
 	}
-	if g.conf.GatewayBind != "" {
-		gw := gateway.NewGateway(app, conf.GatewayBind)
-		g.gw = gw
-	}
 	return g, nil
 }
 
@@ -90,15 +82,6 @@ func (g *GRpcServer) Start() error {
 	listener, err := net.Listen("tcp", g.conf.Bind)
 	if err != nil {
 		return err
-	}
-
-	if g.gw != nil {
-		go func() {
-			err := g.gw.StartGateway(g.conf.CloseWait)
-			if err != nil && err != http.ErrServerClosed {
-				g.app.Fatal("grpc网关启动失败", zap.Error(err))
-			}
-		}()
 	}
 
 	g.app.Info("正在启动grpc服务", zap.String("bind", listener.Addr().String()))

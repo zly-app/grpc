@@ -20,7 +20,7 @@ const (
 	defReqTimeout = 1
 
 	// 初始化时等待第一个链接
-	defWaitFirstConn = true
+	defWaitFirstConn = false
 	// 最小闲置
 	defMinIdle = 2
 	// 最大闲置
