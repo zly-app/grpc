@@ -120,7 +120,7 @@ func main() {
 	)
 
    // 注册rpc服务handler
-	grpc.RegistryServerHandler(func(server grpc.ServiceRegistrar) {
+	grpc.RegistryServerHandler(func(ctx context.Context, server grpc.ServiceRegistrar) {
 		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
 	})
 
@@ -142,7 +142,8 @@ go mod tidy && go run server/main.go
 services:
    grpc:
       Bind: :3000 # bind地址
-      HttpBind: ':8080' # http绑定地址
+      GatewayBind: ':8080' # 网关bind地址
+	  CloseWait: 3 # 关闭前等待时间, 单位秒
       HeartbeatTime: 20 # 心跳时间, 单位秒
       ReqLogLevelIsInfo: true # 是否设置请求日志等级设为info
       RspLogLevelIsInfo: true # 是否设置响应日志等级设为info
@@ -154,7 +155,6 @@ services:
       MaxReqWaitQueueSize: 10000 # 最大请求等待队列大小
       TLSCertFile: '' # tls公钥文件路径
       TLSKeyFile: '' # tls私钥文件路径
-      TLSDomain: '' # tls签发域名
 ```
 
 # 请求数据校验
@@ -167,7 +167,7 @@ services:
 go install github.com/envoyproxy/protoc-gen-validate@latest
 ```
 
-添加 `pb/a.proto` 文件
+添加 `pb/a.proto` 示例文件
 
 ```protobuf
 syntax = "proto3";
@@ -275,8 +275,11 @@ pb/hello/hello.proto
 修改服务端 `server/main.go` 添加代码
 
 ```git
-// 注册网关服务handler
-grpc.RegistryHttpGatewayHandler(hello.RegisterHelloServiceHandler)
+// 注册rpc服务handler
+grpc.RegistryServerHandler(func(ctx context.Context, server grpc.ServiceRegistrar) {
+	hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
+	_ = hello.RegisterHelloServiceHandlerServer(ctx, grpc.GetGatewayMux(), new(HelloService)) // 为 hello 服务提供网关服务
+})
 ```
 
 完整文件如下
@@ -310,12 +313,10 @@ func main() {
 	)
 
    // 注册rpc服务handler
-	grpc.RegistryServerHandler(func(server grpc.ServiceRegistrar) {
+	grpc.RegistryServerHandler(func(ctx context.Context, server grpc.ServiceRegistrar) {
 		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
+		_ = hello.RegisterHelloServiceHandlerServer(ctx, grpc.GetGatewayMux(), new(HelloService)) // 为 hello 服务提供网关服务
 	})
-
-   // 注册网关服务handler
-	grpc.RegistryHttpGatewayHandler(hello.RegisterHelloServiceHandler)
 
 	app.Run()
 }

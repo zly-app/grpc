@@ -8,7 +8,7 @@ import (
 
 var RemoteIPHeaders = []string{"X-Original-Forwarded-For", "X-Forwarded-For", "X-Real-IP"}
 
-func RequestExtractIP(req *http.Request) string {
+var RequestExtractIP = func(req *http.Request) string {
 	headers := req.Header
 	for _, headerName := range RemoteIPHeaders {
 		ipAddresses := strings.Split(headers.Get(headerName), ",")

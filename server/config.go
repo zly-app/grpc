@@ -15,8 +15,10 @@ import (
 const (
 	// bind地址
 	defBind = ":3000"
-	// http bind地址
-	defHttpBind = ":8080"
+	// 网关bind地址
+	defGatewayBind = ":8080"
+	// 关闭前等待时间, 单位秒
+	defCloseWait = 3
 	// 心跳时间
 	defHeartbeatTime = 20
 	// 最小心跳时间
@@ -40,7 +42,8 @@ const (
 // grpc服务配置
 type ServerConfig struct {
 	Bind                          string // bind地址
-	HttpBind                      string // http bind地址
+	GatewayBind                   string // 网关bind地址
+	CloseWait                     int    // 关闭前等待时间, 单位秒
 	HeartbeatTime                 int    // 心跳时间, 单位秒
 	ReqLogLevelIsInfo             bool   // 是否设置请求日志等级设为info
 	RspLogLevelIsInfo             bool   // 是否设置响应日志等级设为info
@@ -57,7 +60,6 @@ type ServerConfig struct {
 	MaxReqWaitQueueSize int
 	TLSCertFile         string // tls公钥文件路径
 	TLSKeyFile          string // tls私钥文件路径
-	TLSDomain           string // tls签发域名
 }
 
 func NewServerConfig() *ServerConfig {
@@ -76,8 +78,11 @@ func (conf *ServerConfig) Check() error {
 	if conf.Bind == "" {
 		conf.Bind = defBind
 	}
-	if conf.HttpBind == "" {
-		conf.HttpBind = defHttpBind
+	if conf.GatewayBind == "" {
+		conf.GatewayBind = defGatewayBind
+	}
+	if conf.CloseWait < 1 {
+		conf.CloseWait = defCloseWait
 	}
 	if conf.HeartbeatTime < defMinHeartbeatTime {
 		conf.HeartbeatTime = defMinHeartbeatTime

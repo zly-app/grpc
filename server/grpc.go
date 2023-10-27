@@ -12,7 +12,6 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/zly-app/zapp/component/gpool"
 	"github.com/zly-app/zapp/core"
-	"github.com/zly-app/zapp/logger"
 	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -27,7 +26,7 @@ import (
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
-type GrpcServerHandler = func(server ServiceRegistrar)
+type GrpcServerHandler = func(ctx context.Context, server ServiceRegistrar)
 
 type GRpcServer struct {
 	app    core.IApp
@@ -80,25 +79,22 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		grpc.ChainUnaryInterceptor(HookInterceptor(hooks...)), // 请求拦截
 	)
 
-	gw := gateway.NewGateway(app, conf.HttpBind)
 	g := &GRpcServer{
 		app:    app,
 		server: server,
 		conf:   conf,
-		gw:     gw,
+	}
+	if g.conf.GatewayBind != "" {
+		gw := gateway.NewGateway(app, conf.GatewayBind)
+		g.gw = gw
 	}
 	return g, nil
 }
 
-func (g *GRpcServer) RegistryServerHandler(hs ...func(server ServiceRegistrar)) {
+func (g *GRpcServer) RegistryServerHandler(hs ...func(ctx context.Context, server ServiceRegistrar)) {
+	ctx := context.Background()
 	for _, h := range hs {
-		h(g.server)
-	}
-}
-
-func (g *GRpcServer) RegistryHttpGatewayHandler(hs ...gateway.GrpcHttpGatewayHandler) {
-	if g.conf.HttpBind != "" {
-		g.gw.RegistryHttpGatewayHandler(hs...)
+		h(ctx, g.server)
 	}
 }
 
@@ -108,10 +104,9 @@ func (g *GRpcServer) Start() error {
 		return err
 	}
 
-	if g.conf.HttpBind != "" {
-		serverPort := listener.Addr().(*net.TCPAddr).Port
+	if g.gw != nil {
 		go func() {
-			err := g.gw.StartGateway(serverPort, g.conf.TLSCertFile, g.conf.TLSDomain)
+			err := g.gw.StartGateway(g.conf.CloseWait)
 			if err != nil && err != http.ErrServerClosed {
 				g.app.Fatal("grpc网关启动失败", zap.Error(err))
 			}
@@ -128,9 +123,6 @@ func (g *GRpcServer) Start() error {
 
 func (g *GRpcServer) Close() {
 	g.server.GracefulStop()
-	if g.conf.HttpBind != "" {
-		g.gw.Close()
-	}
 	g.app.Warn("grpc服务已关闭")
 }
 
@@ -272,13 +264,4 @@ func UnaryServerReqDataValidateAllInterceptor(ctx context.Context, req interface
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return handler(ctx, req)
-}
-
-// 获取logger
-func GetLogger(ctx context.Context) core.ILogger {
-	log := utils.Ctx.GetLogger(ctx)
-	if log != nil {
-		return log
-	}
-	return logger.Log
 }

@@ -2,44 +2,36 @@ package server
 
 import (
 	"fmt"
+	"sync"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/logger"
 	"github.com/zly-app/zapp/service"
 	"go.uber.org/zap"
-
-	"github.com/zly-app/grpc/gateway"
 )
 
 // 默认服务类型
 const DefaultServiceType core.ServiceType = "grpc"
 
-// 当前服务类型
-var nowServiceType = DefaultServiceType
-
-// 设置服务类型, 这个函数应该在 zapp.NewApp 之前调用
-func SetServiceType(t core.ServiceType) {
-	nowServiceType = t
-}
-
 // 启用grpc服务
 func WithService(hooks ...ServerHook) zapp.Option {
-	service.RegisterCreatorFunc(nowServiceType, func(app core.IApp) core.IService {
-		return NewServiceAdapter(app, hooks...)
+	service.RegisterCreatorFunc(DefaultServiceType, func(app core.IApp) core.IService {
+		return newServiceAdapter(app, hooks...)
 	})
-	return zapp.WithService(nowServiceType)
+	return zapp.WithService(DefaultServiceType)
 }
 
 // 注册grpc服务handler
 func RegistryServerHandler(h GrpcServerHandler) {
-	zapp.App().InjectService(nowServiceType, h)
+	zapp.App().InjectService(DefaultServiceType, h)
 }
 
-// 注册grpc服务网关handler
-func RegistryHttpGatewayHandler(h gateway.GrpcHttpGatewayHandler) {
-	zapp.App().InjectService(nowServiceType, h)
-}
+var (
+	defService     *ServiceAdapter
+	defServiceOnce sync.Once
+)
 
 type ServiceAdapter struct {
 	app    core.IApp
@@ -51,8 +43,6 @@ func (s *ServiceAdapter) Inject(a ...interface{}) {
 		switch h := v.(type) {
 		case GrpcServerHandler:
 			s.server.RegistryServerHandler(h)
-		case gateway.GrpcHttpGatewayHandler:
-			s.server.RegistryHttpGatewayHandler(h)
 		default:
 			s.app.Fatal("grpc服务注入类型错误", zap.String("Type", fmt.Sprintf("%T", v)))
 		}
@@ -64,28 +54,34 @@ func (s *ServiceAdapter) Start() error {
 }
 
 func (s *ServiceAdapter) Close() error {
+	s.server.Close()
 	return nil
 }
 
-func NewServiceAdapter(app core.IApp, hooks ...ServerHook) core.IService {
-	conf := NewServerConfig()
-	err := app.GetConfig().ParseServiceConfig(nowServiceType, conf, true)
-	if err != nil {
-		logger.Log.Panic("grpc服务配置错误", zap.String("serviceType", string(nowServiceType)), zap.Error(err))
-	}
+func newServiceAdapter(app core.IApp, hooks ...ServerHook) core.IService {
+	defServiceOnce.Do(func() {
+		conf := NewServerConfig()
+		err := app.GetConfig().ParseServiceConfig(DefaultServiceType, conf, true)
+		if err != nil {
+			logger.Log.Panic("grpc服务配置错误", zap.String("serviceType", string(DefaultServiceType)), zap.Error(err))
+		}
 
-	g, err := NewGRpcServer(app, conf, hooks...)
-	if err != nil {
-		logger.Log.Panic("创建grpc服务失败", zap.String("serviceType", string(nowServiceType)), zap.Error(err))
-	}
-
-	// 在app关闭前优雅的关闭服务
-	zapp.AddHandler(zapp.BeforeExitHandler, func(app core.IApp, handlerType zapp.HandlerType) {
-		g.Close()
+		g, err := NewGRpcServer(app, conf, hooks...)
+		if err != nil {
+			logger.Log.Panic("创建grpc服务失败", zap.String("serviceType", string(DefaultServiceType)), zap.Error(err))
+		}
+		defService = &ServiceAdapter{
+			app:    app,
+			server: g,
+		}
 	})
+	return defService
+}
 
-	return &ServiceAdapter{
-		app:    app,
-		server: g,
+// 获取网关mux
+func GetGatewayMux() *runtime.ServeMux {
+	if defService == nil || defService.server.gw == nil {
+		logger.Log.Fatal("grpc 网关服务未启用")
 	}
+	return defService.server.gw.GetMux()
 }
