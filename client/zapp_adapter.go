@@ -2,9 +2,12 @@ package client
 
 import (
 	"fmt"
+	"sync"
 
+	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/component/conn"
 	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/handler"
 	"google.golang.org/grpc"
 )
 
@@ -43,14 +46,22 @@ type ClientCreatorAdapter struct {
 	componentType core.ComponentType
 }
 
+var defGrpcClientCreator IGRpcClientCreator
+var defGrpcClientCreatorOnce sync.Once
+
 // 创建grpc客户端建造者
-func NewGRpcClientCreator(app core.IApp) IGRpcClientCreator {
-	c := &ClientCreatorAdapter{
-		app:           app,
-		conn:          conn.NewConn(),
-		componentType: nowComponentType,
-	}
-	return c
+func initGRpcClientCreator() IGRpcClientCreator {
+	defGrpcClientCreatorOnce.Do(func() {
+		defGrpcClientCreator = &ClientCreatorAdapter{
+			app:           zapp.App(),
+			conn:          conn.NewConn(),
+			componentType: nowComponentType,
+		}
+		zapp.AddHandler(zapp.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
+			defGrpcClientCreator.Close()
+		})
+	})
+	return defGrpcClientCreator
 }
 
 func (c *ClientCreatorAdapter) GetClientConn(name string) ClientConnInterface {
@@ -75,4 +86,10 @@ func (c *ClientCreatorAdapter) makeClient(name string) (conn.IInstance, error) {
 	}
 
 	return &instance{cc: cc}, nil
+}
+
+// 获取grpc客户端conn
+func GetClientConn(name string) ClientConnInterface {
+	initGRpcClientCreator()
+	return defGrpcClientCreator.GetClientConn(name)
 }

@@ -35,12 +35,7 @@ func makeHelloClient(poolSize int) (core.IApp, hello.HelloServiceClient) {
 		testApp = app
 	})
 
-	c := client.NewGRpcClientCreator(testApp) // 获取grpc客户端建造者
-	// 注册客户端创造者
-	c.RegistryGRpcClientCreator("hello", func(cc client.ClientConnInterface) interface{} {
-		return hello.NewHelloServiceClient(cc)
-	})
-	helloClient := c.GetGRpcClient("hello").(hello.HelloServiceClient) // 获取客户端
+	helloClient := hello.NewHelloServiceClient(client.GetClientConn("hello"))
 	return testApp, helloClient
 }
 

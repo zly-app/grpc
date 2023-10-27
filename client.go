@@ -12,7 +12,7 @@ import (
 type ClientConnInterface = client.ClientConnInterface
 
 // 创建grpc客户端建造者
-var NewGRpcClientCreator = client.NewGRpcClientCreator
+var GetClientConn = client.GetClientConn
 
 type ClientConn = grpc.ClientConn
 
