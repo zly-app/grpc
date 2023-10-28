@@ -4,14 +4,11 @@
 - [先决条件](#%E5%85%88%E5%86%B3%E6%9D%A1%E4%BB%B6)
 - [示例项目](#%E7%A4%BA%E4%BE%8B%E9%A1%B9%E7%9B%AE)
 - [快速开始服务端](#%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B%E6%9C%8D%E5%8A%A1%E7%AB%AF)
-- [配置文件](#%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6)
 - [请求数据校验](#%E8%AF%B7%E6%B1%82%E6%95%B0%E6%8D%AE%E6%A0%A1%E9%AA%8C)
-- [http网关](#http%E7%BD%91%E5%85%B3)
 - [客户端](#%E5%AE%A2%E6%88%B7%E7%AB%AF)
+- [http网关](#http%E7%BD%91%E5%85%B3)
 
 <!-- /TOC -->
----
-
 # grpc服务
 
 > 提供用于 https://github.com/zly-app/zapp 的服务
@@ -52,6 +49,7 @@ Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths
 
 + [grpc服务端](example/server/main.go)
 + [grpc客户端](example/client/main.go)
++ [grpc网关服务](example/gateway/main.go)
 
 # 快速开始(服务端)
 
@@ -97,8 +95,10 @@ package main
 import (
 	"context"
 
-	"github.com/zly-app/grpc"
 	"github.com/zly-app/zapp"
+	"github.com/zly-app/zapp/logger"
+
+	"github.com/zly-app/grpc"
 	"grpc-test/pb/hello"
 )
 
@@ -109,8 +109,7 @@ type HelloService struct {
 }
 
 func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.HelloResp, error) {
-	log := grpc.GetLogger(ctx) // 获取log
-	log.Info("收到请求", req.Msg)
+	logger.Log.Info(ctx, "收到请求", req.Msg)
 	return &hello.HelloResp{Msg: req.GetMsg() + "world"}, nil
 }
 
@@ -134,7 +133,7 @@ func main() {
 go mod tidy && go run server/main.go
 ```
 
-# 配置文件
+服务端配置文件是可选的
 
 添加配置文件 `configs/default.yaml`.
 
@@ -142,8 +141,6 @@ go mod tidy && go run server/main.go
 services:
    grpc:
       Bind: :3000 # bind地址
-      GatewayBind: ':8080' # 网关bind地址
-	  CloseWait: 3 # 关闭前等待时间, 单位秒
       HeartbeatTime: 20 # 心跳时间, 单位秒
       ReqDataValidate: true # 是否启用请求数据校验
       ReqDataValidateAllField: false # 是否对请求数据校验所有字段. 如果设为true, 会对所有字段校验并返回所有的错误. 如果设为false, 校验错误会立即返回.
@@ -200,6 +197,45 @@ protoc \
 pb/a.proto
 ```
 
+# 客户端
+
+创建客户端文件 `client/main.go`
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/zly-app/zapp"
+
+	"github.com/zly-app/grpc"
+	"grpc-test/pb/hello"
+)
+
+func main() {
+	app := zapp.NewApp("grpc-client")
+	defer app.Exit()
+
+	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
+
+	// 调用
+	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+	if err != nil {
+		app.Fatal(resp)
+	}
+	app.Info("收到结果", resp.GetMsg())
+}
+```
+
+运行客户端
+
+```shell
+go mod tidy && go run server/main.go
+```
+
+更多客户端说明参考[这里](./client/)
+
 # http网关
 
 使用 [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway) 作为 http 网关
@@ -252,7 +288,6 @@ message HelloResp{
 }
 ```
 
-
 重新编译 proto
 
 ```shell
@@ -267,17 +302,7 @@ pb/hello/hello.proto
 
 可以看到新出现了一个 `pb/hello/hello.pb.gw.go` 文件
 
-修改服务端 `server/main.go` 添加代码
-
-```git
-// 注册rpc服务handler
-grpc.RegistryServerHandler(func(ctx context.Context, server grpc.ServiceRegistrar) {
-	hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
-	_ = hello.RegisterHelloServiceHandlerServer(ctx, grpc.GetGatewayMux(), new(HelloService)) // 为 hello 服务提供网关服务
-})
-```
-
-完整文件如下
+网关服务端 `server/main.go`
 
 ```go
 package main
@@ -286,41 +311,27 @@ import (
 	"context"
 
 	"github.com/zly-app/zapp"
+
 	"github.com/zly-app/grpc"
-	"grpc-test/pb/hello"
+	"github.com/zly-app/grpc/example/pb/hello"
 )
-
-var _ hello.HelloServiceServer = (*HelloService)(nil)
-
-type HelloService struct {
-	hello.UnimplementedHelloServiceServer
-}
-
-func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.HelloResp, error) {
-	log := grpc.GetLogger(ctx) // 获取log
-	log.Info("收到请求", req.Msg)
-	return &hello.HelloResp{Msg: req.GetMsg() + "world"}, nil
-}
 
 func main() {
 	app := zapp.NewApp("grpc-server",
-		grpc.WithService(), // 启用 grpc 服务
+		grpc.WithGatewayService(), // 启用网关服务
 	)
 
-   // 注册rpc服务handler
-	grpc.RegistryServerHandler(func(ctx context.Context, server grpc.ServiceRegistrar) {
-		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
-		_ = hello.RegisterHelloServiceHandlerServer(ctx, grpc.GetGatewayMux(), new(HelloService)) // 为 hello 服务提供网关服务
-	})
+	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端. 网关会通过这个client对service发起调用
+	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), grpc.GetGatewayMux(), helloClient) // 注册网关
 
 	app.Run()
 }
 ```
 
-运行服务端
+运行网关服务端
 
 ```shell
-go mod tidy && go run server/main.go
+go mod tidy && go run gateway/main.go
 ```
 
 现在可以通过curl访问了
@@ -329,46 +340,13 @@ go mod tidy && go run server/main.go
 curl -X POST http://localhost:8080/hello/hello -d '{"msg": "hello"}'
 ```
 
-# 客户端
+网关配置是可选的
 
-创建客户端文件 `client/main.go`
+添加配置文件 `configs/default.yaml`.
 
-```go
-package main
-
-import (
-	"context"
-
-	"github.com/zly-app/zapp"
-
-	"github.com/zly-app/grpc"
-	"grpc-test/pb/hello"
-)
-
-func main() {
-	app := zapp.NewApp("grpc-client")
-	defer app.Exit()
-
-	c := grpc.NewGRpcClientCreator(app) // 获取grpc客户端建造者
-	// 注册客户端创造者
-	c.RegistryGRpcClientCreator("hello", func(cc grpc.ClientConnInterface) interface{} {
-		return hello.NewHelloServiceClient(cc)
-	})
-	helloClient := c.GetGRpcClient("hello").(hello.HelloServiceClient) // 获取客户端
-
-	// 调用
-	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
-	if err != nil {
-		app.Fatal(resp)
-	}
-	app.Info("收到结果", resp.GetMsg())
-}
+```yaml
+services:
+   grpc-gateway:
+      Bind: :3000 # bind地址
+      CloseWait: 3 # 关闭前等待时间, 单位秒
 ```
-
-运行客户端
-
-```shell
-go mod tidy && go run server/main.go
-```
-
-更多客户端说明参考[这里](./client/)

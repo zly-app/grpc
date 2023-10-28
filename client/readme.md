@@ -74,10 +74,10 @@ func main() {
 	app := zapp.NewApp("grpc-client")
 	defer app.Exit()
 
-    client := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
+  helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
 
 	// 调用
-	resp, err := client.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
 	if err != nil {
 		app.Fatal(resp)
 	}
@@ -93,18 +93,18 @@ go mod tidy && go run .
 
 # 配置文件
 
-## 最少配置设置
+添加配置文件 `configs/default.yaml`.
+
+最少配置设置
 
 ```yaml
 components:
    grpc:
-      hello: # 服务名
+      hello: # 客户端名
          Address: localhost:3000 # 链接地址
 ```
 
-添加配置文件 `configs/default.yaml`.
-
-## 完整配置说明
+完整配置说明
 
 ```yaml
 components:
