@@ -317,7 +317,7 @@ import (
 )
 
 func main() {
-	app := zapp.NewApp("grpc-server",
+	app := zapp.NewApp("grpc-gateway",
 		grpc.WithGatewayService(), // 启用网关服务
 	)
 
