@@ -7,9 +7,8 @@ import (
 	"strings"
 	"time"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/filter"
 	"github.com/zly-app/zapp/pkg/utils"
 	"github.com/zlyuancn/connpool"
 	"go.uber.org/zap"
@@ -17,7 +16,6 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/balance"
 	"github.com/zly-app/grpc/pkg"
@@ -30,25 +28,44 @@ type IGrpcConn interface {
 }
 
 type GRpcClient struct {
-	app  core.IApp
-	pool connpool.IConnectPool
+	app        core.IApp
+	pool       connpool.IConnectPool
+	clientName string
+}
+
+type filterReq struct {
+	Req interface{}
+}
+type filterRsp struct {
+	Rsp interface{}
 }
 
 func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
-	ctx = pkg.TraceStart(ctx, method)
-	defer pkg.TraceEnd(ctx)
+	ctx, chain := filter.GetClientFilter(ctx, string(DefaultComponentType), g.clientName, method)
+	meta := filter.GetCallMeta(ctx)
+	meta.AddCallersSkip(1)
 
-	conn, err := g.pool.Get(ctx)
-	if err == nil {
-		pkg.TraceReq(ctx, args)
-		ctx, opts = pkg.InjectTargetToCtx(ctx, opts)
-		ctx, opts = pkg.InjectHashKeyToCtx(ctx, opts)
+	ctx = pkg.TraceInjectIn(ctx)
+	r := &filterReq{Req: args}
+	sp := &filterRsp{Rsp: reply}
+	err := chain.HandleInject(ctx, r, sp, func(ctx context.Context, req, rsp interface{}) error {
+		ctx = pkg.TraceInjectOut(ctx)
+		r := req.(*filterReq)
+		sp := rsp.(*filterRsp)
+
+		ctx, opts = pkg.InjectTargetToCtx(ctx, opts)  // 注入 target
+		ctx, opts = pkg.InjectHashKeyToCtx(ctx, opts) // 注入 hash key
+
+		conn, err := g.pool.Get(ctx)
+		if err != nil {
+			return err
+		}
+		defer g.pool.Put(conn)
+
 		v := conn.GetConn().(*grpc.ClientConn)
-		err = v.Invoke(ctx, method, args, reply, opts...)
-		g.pool.Put(conn)
-	}
-
-	pkg.TraceReply(ctx, reply, err)
+		err = v.Invoke(ctx, method, r.Req, sp.Rsp, opts...)
+		return err
+	})
 	return err
 }
 
@@ -123,8 +140,9 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	}
 
 	g := &GRpcClient{
-		app:  app,
-		pool: pool,
+		app:        app,
+		pool:       pool,
+		clientName: name,
 	}
 	return g, nil
 }
@@ -169,15 +187,6 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials())) // 不安全连接
 	}
 
-	chainUnaryClientList := []grpc.UnaryClientInterceptor{}
-	chainUnaryClientList = append(chainUnaryClientList,
-		ReqTimeoutInterceptor(app, conf),     // 请求超时
-		ctxTagsInterceptor(),                 // 设置标记
-		UnaryClientLogInterceptor(app, conf), // 日志
-		RecoveryInterceptor(),                // panic恢复
-	)
-	opts = append(opts, grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(chainUnaryClientList...)))
-
 	if ss5 != nil {
 		opts = append(opts, grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 			return ss5.DialContext(ctx, "tcp", s)
@@ -189,71 +198,4 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 		return nil, fmt.Errorf("grpc客户端连接失败: %v", err)
 	}
 	return conn, nil
-}
-
-func ReqTimeoutInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		if conf.ReqTimeout < 1 {
-			return invoker(ctx, method, req, reply, cc, opts...)
-		}
-
-		ctx, cancel := context.WithTimeout(ctx, time.Duration(conf.ReqTimeout)*time.Second)
-		defer cancel()
-		return invoker(ctx, method, req, reply, cc, opts...)
-	}
-}
-
-// 日志
-func UnaryClientLogInterceptor(app core.IApp, conf *ClientConfig) grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		startTime := time.Now()
-
-		reqLogFields := []interface{}{
-			ctx,
-			"grpc.request",
-			zap.String("grpc.method", method),
-			zap.Any("req", req),
-		}
-		if conf.ReqLogLevelIsInfo {
-			app.Info(reqLogFields...)
-		} else {
-			app.Debug(reqLogFields...)
-		}
-
-		err := invoker(ctx, method, req, reply, cc, opts...)
-		if err != nil {
-			logFields := []interface{}{
-				ctx,
-				"grpc.response",
-				zap.String("grpc.method", method),
-				zap.String("latency", time.Since(startTime).String()),
-				zap.Uint32("code", uint32(status.Code(err))),
-				zap.Error(err),
-			}
-
-			hasPanic := grpc_ctxtags.Extract(ctx).Has(ctxTagHasPanic)
-			if hasPanic {
-				panicErrDetail := utils.Recover.GetRecoverErrorDetail(err)
-				logFields = append(logFields, zap.Bool("panic", true), zap.String("panic.detail", panicErrDetail))
-			}
-
-			app.Error(logFields...)
-			return err
-		}
-
-		replyLogFields := []interface{}{
-			ctx,
-			"grpc.response",
-			zap.String("grpc.method", method),
-			zap.String("latency", time.Since(startTime).String()),
-			zap.Any("reply", reply),
-		}
-		if conf.RspLogLevelIsInfo {
-			app.Info(replyLogFields...)
-		} else {
-			app.Debug(replyLogFields...)
-		}
-
-		return err
-	}
 }

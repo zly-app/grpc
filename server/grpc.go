@@ -7,7 +7,6 @@ import (
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/zly-app/zapp/core"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -32,12 +31,10 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		return nil, fmt.Errorf("GrpcServer配置检查失败: %v", err)
 	}
 
-	chainUnaryClientList := []grpc.UnaryServerInterceptor{}
-	chainUnaryClientList = append(chainUnaryClientList,
+	chainUnaryClientList := []grpc.UnaryServerInterceptor{
 		AppFilter,
-		grpc_ctxtags.UnaryServerInterceptor(), // 设置标记
-		ReturnErrorInterceptor(app, conf),     // 返回错误拦截
-	)
+		ReturnErrorInterceptor(app, conf), // 返回错误拦截
+	}
 	if conf.ReqDataValidate && !conf.ReqDataValidateAllField {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryServerReqDataValidateInterceptor)
 	}

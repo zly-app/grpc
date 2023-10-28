@@ -5,8 +5,6 @@ import (
 
 	"github.com/zly-app/zapp/filter"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/pkg"
 )
@@ -41,22 +39,4 @@ func AppFilter(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
 	}
 	rsp := sp.(*filterRsp)
 	return rsp.Rsp, nil
-}
-
-func init() {
-	old := filter.DefaultGetErrCodeFunc
-	filter.DefaultGetErrCodeFunc = func(ctx context.Context, rsp interface{}, err error) (int, string, error) {
-		if err != nil {
-			if se, ok := err.(interface {
-				GRPCStatus() *status.Status
-			}); ok {
-				code := se.GRPCStatus().Code()
-				if code == codes.OK {
-					return 0, filter.CodeTypeSuccess, nil
-				}
-				return int(code), filter.CodeTypeFail, err
-			}
-		}
-		return old(ctx, rsp, err)
-	}
 }

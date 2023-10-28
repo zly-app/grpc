@@ -14,14 +14,6 @@ import (
 // 默认组件类型
 const DefaultComponentType core.ComponentType = "grpc"
 
-// 当前组件类型
-var nowComponentType = DefaultComponentType
-
-// 设置组件类型, 这个函数应该在 zapp.NewApp 之前调用
-func SetComponentType(t core.ComponentType) {
-	nowComponentType = t
-}
-
 type ClientConnInterface = grpc.ClientConnInterface
 type GRpcClientCreator = func(cc ClientConnInterface) interface{}
 
@@ -41,9 +33,8 @@ func (i *instance) Close() {
 }
 
 type ClientCreatorAdapter struct {
-	app           core.IApp
-	conn          *conn.Conn
-	componentType core.ComponentType
+	app  core.IApp
+	conn *conn.Conn
 }
 
 var defGrpcClientCreator IGRpcClientCreator
@@ -53,9 +44,8 @@ var defGrpcClientCreatorOnce sync.Once
 func initGRpcClientCreator() IGRpcClientCreator {
 	defGrpcClientCreatorOnce.Do(func() {
 		defGrpcClientCreator = &ClientCreatorAdapter{
-			app:           zapp.App(),
-			conn:          conn.NewConn(),
-			componentType: nowComponentType,
+			app:  zapp.App(),
+			conn: conn.NewConn(),
 		}
 		zapp.AddHandler(zapp.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
 			defGrpcClientCreator.Close()
@@ -75,7 +65,7 @@ func (c *ClientCreatorAdapter) Close() {
 func (c *ClientCreatorAdapter) makeClient(name string) (conn.IInstance, error) {
 	// 解析配置
 	conf := NewClientConfig()
-	err := c.app.GetConfig().ParseComponentConfig(c.componentType, name, conf, true)
+	err := c.app.GetConfig().ParseComponentConfig(DefaultComponentType, name, conf, true)
 	if err != nil {
 		return nil, fmt.Errorf("grpc客户端的配置错误: %v", err)
 	}
