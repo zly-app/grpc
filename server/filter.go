@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 
-	"github.com/zly-app/zapp/filter"
 	"google.golang.org/grpc"
+
+	"github.com/zly-app/zapp"
+	"github.com/zly-app/zapp/filter"
 
 	"github.com/zly-app/grpc/pkg"
 )
@@ -22,11 +24,20 @@ func AppFilter(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
 	meta := filter.GetCallMeta(ctx)
 	meta.AddCallersSkip(3)
 
-	ctx = pkg.TraceInjectIn(ctx)
+	ctx, mdIn := pkg.TraceInjectIn(ctx)
+
+	// 获取上游的主调信息并写入, 修改被调信息
+	callMeta, _ := pkg.ExtractCallerMetaFromMD(mdIn)
+	ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{
+		CallerService: callMeta.CallerService,
+		CallerMethod:  callMeta.CallerMethod,
+		CalleeService: string(DefaultServiceType) + "/" + zapp.App().Name(),
+		CalleeMethod:  info.FullMethod,
+	})
 
 	r := &filterReq{Req: req}
 	sp, err := chain.Handle(ctx, r, func(ctx context.Context, req interface{}) (rsp interface{}, err error) {
-		ctx = pkg.TraceInjectOut(ctx)
+		ctx, _ = pkg.TraceInjectOut(ctx)
 		r := req.(*filterReq)
 		sp, err := handler(ctx, r.Req)
 		if err != nil {

@@ -5,12 +5,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/zly-app/zapp/pkg/utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/zly-app/zapp/filter"
+	"github.com/zly-app/zapp/pkg/utils"
 )
 
 const (
@@ -18,14 +21,17 @@ const (
 	tracestateHeader  = "tracestate"
 )
 
-func TraceInjectIn(ctx context.Context) context.Context {
+// 取出 mdIn, 返回的 ctx 会带上 trace (如果上游传入的trace)
+func TraceInjectIn(ctx context.Context) (context.Context, metadata.MD) {
 	// 取出 in 元数据
 	mdIn, _ := metadata.FromIncomingContext(ctx)
 	tm := TextMapCarrier{mdIn}
 	ctx = otel.GetTextMapPropagator().Extract(ctx, tm)
-	return ctx
+	return ctx, mdIn
 }
-func TraceInjectOut(ctx context.Context) context.Context {
+
+// 返回的 ctx 如果用于 client 会把当前 trace 带上
+func TraceInjectOut(ctx context.Context) (context.Context, metadata.MD) {
 	// 取出 out 元数据
 	mdOut, ok := metadata.FromOutgoingContext(ctx)
 	if ok {
@@ -38,7 +44,7 @@ func TraceInjectOut(ctx context.Context) context.Context {
 	tm := TextMapCarrier{mdOut}
 	otel.GetTextMapPropagator().Inject(ctx, tm)
 	ctx = metadata.NewOutgoingContext(ctx, mdOut)
-	return ctx
+	return ctx, mdOut
 }
 
 func TraceStart(ctx context.Context, method string) context.Context {
@@ -150,3 +156,25 @@ func (t TextMapCarrier) Keys() []string {
 }
 
 var _ propagation.TextMapCarrier = (*TextMapCarrier)(nil)
+
+const mdCallerMetaKey = "caller_meta"
+
+func ExtractCallerMetaFromMD(md metadata.MD) (filter.CallerMeta, bool) {
+	ss := md.Get(mdCallerMetaKey)
+	if len(ss) == 0 {
+		return filter.CallerMeta{}, false
+	}
+	meta := filter.CallerMeta{}
+	err := sonic.UnmarshalString(ss[0], &meta)
+	return meta, err == nil
+}
+
+func InjectCallerMetaToMD(ctx context.Context, mdCopy metadata.MD, callerMeta filter.CallerMeta) context.Context {
+	metaText, err := sonic.MarshalString(callerMeta)
+	if err != nil {
+		return ctx
+	}
+	mdCopy.Set(mdCallerMetaKey, metaText)
+	ctx = metadata.NewOutgoingContext(ctx, mdCopy)
+	return ctx
+}

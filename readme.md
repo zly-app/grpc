@@ -37,7 +37,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 4. 获取依赖 proto 文件
 
 ```shell
-go install github.com/zly-app/grpc@v0.3.0
+go get github.com/zly-app/grpc@v0.4.1
 ```
 
 将 `${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos` 添加到 IDE 的 proto 导入路径.
