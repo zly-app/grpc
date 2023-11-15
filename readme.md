@@ -40,7 +40,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 go get github.com/zly-app/grpc@v0.4.1
 ```
 
-将 `${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos` 添加到 IDE 的 proto 导入路径.
+将 `${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.4.1/protos` 添加到 IDE 的 proto 导入路径.
 
 Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths`, 需要取消勾选 `Configure automatically` 才能添加路径.
 
