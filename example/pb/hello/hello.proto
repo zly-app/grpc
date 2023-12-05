@@ -6,17 +6,16 @@ import "google/api/annotations.proto";
 import "validate/validate.proto";
 
 service helloService{
-  rpc Hello(HelloReq) returns (HelloResp){
+  rpc Say(SayReq) returns (SayResp){
     option (google.api.http) = {
-      post: "/hello/hello"
-      body: "*"
+      post: "/hello/say"
     };
   };
 }
 
-message HelloReq{
+message SayReq{
   string msg = 1[(validate.rules).string = {min_len: 1, max_len: 10}];
 }
-message HelloResp{
+message SayResp{
   string msg = 1;
 }

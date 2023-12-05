@@ -16,9 +16,9 @@ type HelloService struct {
 	hello.UnimplementedHelloServiceServer
 }
 
-func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.HelloResp, error) {
+func (h *HelloService) Say(ctx context.Context, req *hello.SayReq) (*hello.SayResp, error) {
 	logger.Log.Info(ctx, "收到请求", req.Msg)
-	return &hello.HelloResp{Msg: req.GetMsg() + "world"}, nil
+	return &hello.SayResp{Msg: req.GetMsg() + "world"}, nil
 }
 
 func main() {

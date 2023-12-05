@@ -28,7 +28,6 @@ type Gateway struct {
 	app          core.IApp
 	bind         string // 网关bind
 	gwMux        *runtime.ServeMux
-	server       *http.Server
 	closeWaitSec int
 }
 
@@ -38,15 +37,10 @@ func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
 	}
 
 	gwMux := runtime.NewServeMux(runtime.WithMetadata(gatewayMetadataAnnotator))
-	server := &http.Server{
-		Addr:    conf.Bind,
-		Handler: gwMux,
-	}
 	return &Gateway{
 		app:          app,
 		bind:         conf.Bind,
 		gwMux:        gwMux,
-		server:       server,
 		closeWaitSec: conf.CloseWait,
 	}, nil
 }
@@ -60,19 +54,19 @@ func (g *Gateway) StartGateway() error {
 	if err != nil {
 		return err
 	}
-
+	server := &http.Server{Handler: g.gwMux}
 	handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(g.closeWaitSec)*time.Second)
 		defer cancel()
 
-		err := g.server.Shutdown(ctx)
+		err := server.Shutdown(ctx)
 		if err != nil {
 			g.app.Error("关闭grpc网关服务失败", zap.Error(err))
 		}
 	})
 
 	g.app.Info("正在启动grpc网关服务", zap.String("bind", listener.Addr().String()))
-	return g.server.Serve(listener)
+	return server.Serve(listener)
 }
 
 // grpc元数据注解器

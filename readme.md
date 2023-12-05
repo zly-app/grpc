@@ -67,13 +67,13 @@ package hello; // 决定proto引用路径和rpc路由
 option go_package = "grpc-test/pb/hello"; // 用于对golang包管理的定位
 
 service helloService{
-  rpc Hello(HelloReq) returns (HelloResp);
+  rpc Say(SayReq) returns (SayResp);
 }
 
-message HelloReq{
+message SayReq{
   string msg = 1;
 }
-message HelloResp{
+message SayResp{
   string msg = 1;
 }
 ```
@@ -108,9 +108,9 @@ type HelloService struct {
 	hello.UnimplementedHelloServiceServer
 }
 
-func (h *HelloService) Hello(ctx context.Context, req *hello.HelloReq) (*hello.HelloResp, error) {
+func (h *HelloService) Say(ctx context.Context, req *hello.SayReq) (*hello.SayResp, error) {
 	logger.Log.Info(ctx, "收到请求", req.Msg)
-	return &hello.HelloResp{Msg: req.GetMsg() + "world"}, nil
+	return &hello.SayResp{Msg: req.GetMsg() + "world"}, nil
 }
 
 func main() {
@@ -220,7 +220,7 @@ func main() {
 	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
 
 	// 调用
-	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
 	if err != nil {
 		app.Fatal(resp)
 	}
@@ -252,11 +252,10 @@ go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@lat
 + import "google/api/annotations.proto"; // 添加导入
 
 service helloService{
--  rpc Hello(HelloReq) returns (HelloResp);
-+  rpc Hello(HelloReq) returns (HelloResp){ // 修改rpc接口
+-  rpc Say(SayReq) returns (SayResp);
++  rpc Say(SayReq) returns (SayResp){ // 修改rpc接口
 +    option (google.api.http) = {
-+      post: "/hello/hello"
-+      body: "*"
++      post: "/hello/say"
 +    };
 +  };
 }
@@ -272,18 +271,17 @@ option go_package = "grpc-test/pb/hello"; // 用于对golang包管理的定位
 import "google/api/annotations.proto";  // 添加导入
 
 service helloService{
-  rpc Hello(HelloReq) returns (HelloResp){// 修改rpc接口
+  rpc Say(SayReq) returns (SayResp){// 修改rpc接口
     option (google.api.http) = {
-      post: "/hello/hello"
-      body: "*"
+      post: "/hello/say"
     };
   };
 }
 
-message HelloReq{
+message SayReq{
   string msg = 1;
 }
-message HelloResp{
+message SayResp{
   string msg = 1;
 }
 ```
@@ -337,7 +335,7 @@ go mod tidy && go run gateway/main.go
 现在可以通过curl访问了
 
 ```curl
-curl -X POST http://localhost:8080/hello/hello -d '{"msg": "hello"}'
+curl -X POST http://localhost:8080/hello/say -d '{"msg": "hello"}'
 ```
 
 网关配置是可选的

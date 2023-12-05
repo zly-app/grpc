@@ -16,7 +16,7 @@ func main() {
 	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
 
 	// 调用
-	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
 	if err != nil {
 		app.Fatal(err)
 	}

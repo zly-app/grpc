@@ -36,13 +36,13 @@ package hello; // 决定proto引用路径和rpc路由
 option go_package = "server/hello/hello"; // 用于对golang包管理的定位
 
 service helloService{
-   rpc Hello(HelloReq) returns (HelloResp);
+   rpc Say(SayReq) returns (SayResp);
 }
 
-message HelloReq{
+message SayReq{
    string msg = 1;
 }
-message HelloResp{
+message SayResp{
    string msg = 1;
 }
 ```
@@ -74,10 +74,10 @@ func main() {
 	app := zapp.NewApp("grpc-client")
 	defer app.Exit()
 
-  helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
+	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
 
 	// 调用
-	resp, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
 	if err != nil {
 		app.Fatal(resp)
 	}
