@@ -191,7 +191,7 @@ message Person {
 ```shell
 protoc \
 -I . \
--I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos \
+-I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.4.1/protos \
 --go_out . --go_opt paths=source_relative \
 --validate_out "lang=go:." --validate_opt paths=source_relative \
 pb/a.proto
@@ -244,6 +244,7 @@ go mod tidy && go run server/main.go
 
 ```shell
 go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
 ```
 
 修改 `pb/hello/hello.proto` 文件
@@ -291,7 +292,7 @@ message SayResp{
 ```shell
 protoc \
 -I . \
--I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos \
+-I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.4.1/protos \
 --go_out . --go_opt paths=source_relative \
 --go-grpc_out . --go-grpc_opt paths=source_relative \
 --grpc-gateway_out . --grpc-gateway_opt paths=source_relative \
@@ -347,4 +348,15 @@ services:
    grpc-gateway:
       Bind: :3000 # bind地址
       CloseWait: 3 # 关闭前等待时间, 单位秒
+```
+
+生成 `swagger`
+
+```bash
+protoc \
+-I . \
+-I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos \
+--openapiv2_out . \
+--go_out . --go_opt paths=source_relative \
+pb/hello/hello.proto
 ```
