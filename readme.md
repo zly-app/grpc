@@ -257,6 +257,7 @@ service helloService{
 +  rpc Say(SayReq) returns (SayResp){ // 修改rpc接口
 +    option (google.api.http) = {
 +      post: "/hello/say"
++      body: "*"
 +    };
 +  };
 }
@@ -275,6 +276,7 @@ service helloService{
   rpc Say(SayReq) returns (SayResp){// 修改rpc接口
     option (google.api.http) = {
       post: "/hello/say"
+      body: "*"
     };
   };
 }

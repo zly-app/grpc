@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/handler"
@@ -17,11 +16,7 @@ import (
 )
 
 const (
-	GatewayMetadataMethod  = "gw.method"
-	GatewayMetadataPath    = "gw.path-bin"
-	GatewayMetadataHeaders = "gw.headers-bin"
-	GatewayMetadataIP      = "gw.ip-bin"
-	GatewayMetadataParams  = "gw.params-bin"
+	GatewayMDataKey = "gw.data-bin"
 )
 
 type Gateway struct {
@@ -71,22 +66,33 @@ func (g *Gateway) StartGateway() error {
 
 // grpc元数据注解器
 func gatewayMetadataAnnotator(ctx context.Context, req *http.Request) metadata.MD {
-	method := req.Method
-	path := req.URL.Path
-	params, _ := url.QueryUnescape(req.URL.RawQuery)
-	ip := RequestExtractIP(req)
-	headers := req.Header
-
-	headersStorage := make([]string, 0, len(headers)*2)
-	for k, vv := range headers {
-		headersStorage = append(headersStorage, k, strings.Join(vv, ";"))
+	d := &GatewayData{
+		Method:   req.Method,
+		Path:     req.URL.Path,
+		RawQuery: req.URL.RawQuery,
+		IP:       RequestExtractIP(req),
+		Headers:  req.Header,
 	}
+	s, _ := sonic.MarshalString(d)
 
-	return metadata.MD{
-		GatewayMetadataMethod:  {method},
-		GatewayMetadataPath:    {path},
-		GatewayMetadataParams:  {params},
-		GatewayMetadataIP:      {ip},
-		GatewayMetadataHeaders: headersStorage,
+	return metadata.MD{GatewayMDataKey: []string{s}}
+}
+
+type GatewayData struct {
+	Method   string
+	Path     string
+	RawQuery string
+	IP       string
+	Headers  http.Header
+}
+
+// 获取网关数据
+func GetGatewayData(ctx context.Context) *GatewayData {
+	ret := &GatewayData{}
+	mdIn, _ := metadata.FromIncomingContext(ctx)
+	s, _ := mdIn[GatewayMDataKey]
+	if len(s) > 0 {
+		_ = sonic.UnmarshalString(s[0], ret)
 	}
+	return ret
 }
