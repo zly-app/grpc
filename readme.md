@@ -163,26 +163,45 @@ go install github.com/envoyproxy/protoc-gen-validate@latest
 
 ```protobuf
 syntax = "proto3";
-package a; // 决定proto引用路径和rpc路由
+package pb; // 决定proto引用路径和rpc路由
 option go_package = "grpc-test/pb"; // 用于对golang包管理的定位
 import "validate/validate.proto";
 
-message Person {
-  uint64 id    = 1 [(validate.rules).uint64.gt    = 999];
-
-  string email = 2 [(validate.rules).string.email = true];
-
-  string name  = 3 [(validate.rules).string = {
-    pattern:   "^[^[0-9]A-Za-z]+( [^[0-9]A-Za-z]+)*$",
-    max_bytes: 256,
+message A {
+  // 字符串
+  string a = 1 [(validate.rules).string = {
+    ignore_empty: true, // 可以是空字符串
+    //    len: 11, // 长度必须为11
+    max_len: 20, // rune长度最大为20
+    min_len: 5, // rune长度最小为5
+    prefix: 'hello', // 前缀
+    suffix: 'world', // 后缀
+    contains: 'hello world' // 包含字符串
   }];
-
-  Location home = 4 [(validate.rules).message.required = true];
-
-  message Location {
-    double lat = 1 [(validate.rules).double = { gte: -90,  lte: 90 }];
-    double lng = 2 [(validate.rules).double = { gte: -180, lte: 180 }];
-  }
+  // 数字
+  int32 b = 2 [(validate.rules).int32 = {
+    ignore_empty: true, // 可以是0
+    lt: 10, // 必须小于10
+    //    lte: 10, // 必须小等于10
+    gt: 3, // 必须大于3
+    //    gte: 3, // 必须大于等于3
+    //    const: 5, // 必须等于5
+  }];
+  // 布尔型
+  bool c = 3[(validate.rules).bool = {
+    const: true, // 必须为true
+  }];
+  // 数组
+  repeated string d = 4[(validate.rules).repeated = {
+    max_items: 3, // 最多包含3个数据
+    min_items: 2, // 最多包含2个数据
+    unique: true, // 内部数据不允许重复
+    items: {
+      string: {
+        // ... string 选项
+      }
+    }
+  }];
 }
 ```
 

@@ -1,6 +1,6 @@
 syntax = 'proto3';
-package hello;
-option go_package = "github.com/zly-app/grpc/example/pb/hello";
+package hello; // 决定proto引用路径和rpc路由
+option go_package = "github.com/zly-app/grpc/example/pb/hello"; // 用于对golang包管理的定位
 
 import "google/api/annotations.proto";
 import "validate/validate.proto";
