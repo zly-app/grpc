@@ -390,7 +390,7 @@ services:
 ```bash
 protoc \
 -I . \
--I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.3.0/protos \
+-I ${GOPATH}/protos/zly-app/grpc/protos \
 --openapiv2_out . \
 --go_out . --go_opt paths=source_relative \
 pb/hello/hello.proto
