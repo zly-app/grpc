@@ -36,14 +36,28 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 4. 获取依赖 proto 文件
 
-```shell
-go get github.com/zly-app/grpc@v0.4.1
+**官方 proto 文件参考 https://github.com/googleapis/googleapis/**
+
+linux
+
+```bash
+mkdir -p ${GOPATH}/protos/zly-app && cd ${GOPATH}/protos/zly-app
+git clone --depth=1 https://github.com/zly-app/grpc.git
 ```
 
-将 `${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.4.1/protos` 添加到 IDE 的 proto 导入路径.
+Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths`, 取消勾选 `Configure automatically`.
+将 `${GOPATH}/protos/zly-app/grpc/protos` 添加到 IDE 的 proto 导入路径.
 
-Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths`, 需要取消勾选 `Configure automatically` 才能添加路径.
+win
 
+```shell
+if not exist %GOPATH%\protos\zly-app mkdir %GOPATH%\protos\zly-app
+cd /d %GOPATH%\protos\zly-app
+git clone --depth=1 https://github.com/zly-app/grpc.git
+```
+
+Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths`, 取消勾选 `Configure automatically`.
+将 `%GOPATH%\protos\zly-app\grpc\protos` 添加到 IDE 的 proto 导入路径.
 
 # 示例项目
 
@@ -210,7 +224,7 @@ message A {
 ```shell
 protoc \
 -I . \
--I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.4.1/protos \
+-I ${GOPATH}/protos/zly-app/grpc/protos \
 --go_out . --go_opt paths=source_relative \
 --validate_out "lang=go:." --validate_opt paths=source_relative \
 pb/a.proto
@@ -313,7 +327,7 @@ message SayResp{
 ```shell
 protoc \
 -I . \
--I ${GOPATH}/pkg/mod/github.com/zly-app/grpc@v0.4.1/protos \
+-I ${GOPATH}/protos/zly-app/grpc/protos \
 --go_out . --go_opt paths=source_relative \
 --go-grpc_out . --go-grpc_opt paths=source_relative \
 --grpc-gateway_out . --grpc-gateway_opt paths=source_relative \
