@@ -9,6 +9,9 @@
 - [http网关](#http%E7%BD%91%E5%85%B3)
 
 <!-- /TOC -->
+
+---
+
 # grpc服务
 
 > 提供用于 https://github.com/zly-app/zapp 的服务
@@ -36,7 +39,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 4. 获取依赖 proto 文件
 
-**官方 proto 文件参考 https://github.com/googleapis/googleapis/**
+> 官方 proto 文件参考 https://github.com/googleapis/googleapis/
 
 linux
 
@@ -373,6 +376,8 @@ go mod tidy && go run gateway/main.go
 ```curl
 curl -X POST http://localhost:8080/hello/say -d '{"msg": "hello"}'
 ```
+
+注意. 这里请求和返回的json字段名完全等于proto中定义的message字段名, 与json标签无关
 
 网关配置是可选的
 

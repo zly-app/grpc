@@ -13,6 +13,7 @@ import (
 	"github.com/zly-app/zapp/handler"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 const (
@@ -31,7 +32,19 @@ func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
 		return nil, fmt.Errorf("Grpc网关配置检查失败: %v", err)
 	}
 
-	gwMux := runtime.NewServeMux(runtime.WithMetadata(gatewayMetadataAnnotator))
+	gwMux := runtime.NewServeMux(
+		runtime.WithMetadata(gatewayMetadataAnnotator),
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.HTTPBodyMarshaler{
+			Marshaler: &runtime.JSONPb{
+				MarshalOptions: protojson.MarshalOptions{
+					EmitUnpopulated: true,
+					UseProtoNames:   true,
+				},
+				UnmarshalOptions: protojson.UnmarshalOptions{
+					DiscardUnknown: true,
+				},
+			},
+		}))
 	return &Gateway{
 		app:          app,
 		bind:         conf.Bind,
