@@ -73,6 +73,9 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 
 		v := conn.GetConn().(*grpc.ClientConn)
 		err = v.Invoke(ctx, method, r.Req, sp.Rsp, opts...)
+
+		pkg.TraceInjectGrpcHeader(ctx, opts...)
+
 		return err
 	})
 	return err

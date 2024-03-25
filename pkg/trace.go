@@ -9,6 +9,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -45,6 +46,20 @@ func TraceInjectOut(ctx context.Context) (context.Context, metadata.MD) {
 	otel.GetTextMapPropagator().Inject(ctx, tm)
 	ctx = metadata.NewOutgoingContext(ctx, mdOut)
 	return ctx, mdOut
+}
+
+// trace注入到grpcHeader中
+func TraceInjectGrpcHeader(ctx context.Context, opts ...grpc.CallOption) {
+	for _, o := range opts {
+		switch opt := o.(type) {
+		case grpc.HeaderCallOption:
+			if *opt.HeaderAddr == nil {
+				*opt.HeaderAddr = metadata.MD{}
+			}
+			traceID, _ := utils.Otel.GetOTELTraceID(ctx)
+			opt.HeaderAddr.Set("trace_id", traceID)
+		}
+	}
 }
 
 func TraceStart(ctx context.Context, method string) context.Context {

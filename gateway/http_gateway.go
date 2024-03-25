@@ -32,9 +32,8 @@ func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
 		return nil, fmt.Errorf("Grpc网关配置检查失败: %v", err)
 	}
 
-	gwMux := runtime.NewServeMux(
-		runtime.WithMetadata(gatewayMetadataAnnotator),
-		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.HTTPBodyMarshaler{
+	var mar runtime.Marshaler = &runtime.HTTPBodyMarshaler{
+		Marshaler: &Marshaler{
 			Marshaler: &runtime.JSONPb{
 				MarshalOptions: protojson.MarshalOptions{
 					EmitUnpopulated: true,
@@ -44,7 +43,12 @@ func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
 					DiscardUnknown: true,
 				},
 			},
-		}))
+		},
+	}
+	gwMux := runtime.NewServeMux(
+		runtime.WithMetadata(gatewayMetadataAnnotator),
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, mar),
+	)
 	return &Gateway{
 		app:          app,
 		bind:         conf.Bind,
