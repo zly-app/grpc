@@ -1,10 +1,11 @@
 package static
 
 import (
+	"context"
 	"fmt"
-	"net"
-	"strings"
+	"sync"
 
+	"github.com/zly-app/zapp/component/conn"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 
@@ -19,32 +20,75 @@ func init() {
 }
 
 type StaticRegistry struct {
-	*manual.Resolver
+	res     map[string]resolver.Builder
+	address map[string][]*pkg.AddrInfo
+	mx      sync.RWMutex
+
+	conn *conn.Conn
 }
 
-func (s *StaticRegistry) Registry(addr net.Addr) error { return nil }
-func (s *StaticRegistry) UnRegistry() error            { return nil }
+func (s *StaticRegistry) Close() {}
 
-// 创建Manual
-func NewManual(address string) (registry.Registry, error) {
-	if address == "" {
-		return nil, fmt.Errorf("address为空")
+func (s *StaticRegistry) GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error) {
+	s.mx.RLock()
+	b, ok := s.res[serverName]
+	s.mx.RUnlock()
+
+	if ok {
+		return b, nil
 	}
 
-	r := manual.NewBuilderWithScheme(Name)
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	b, ok = s.res[serverName]
+	if ok {
+		return b, nil
+	}
 
-	ss := strings.Split(address, ",")
-	addrList := make([]resolver.Address, len(ss))
-	for i, s := range ss {
-		addrInfo, err := pkg.ParseAddr(s)
-		if err != nil {
-			return nil, fmt.Errorf("解析addr失败: %v", err)
-		}
-		addr := resolver.Address{Addr: addrInfo.Endpoint}
-		addr = pkg.SetAddrInfo(addr, addrInfo)
+	address, ok := s.address[serverName]
+	if !ok || len(address) == 0 {
+		return nil, fmt.Errorf("%s address is empty", serverName)
+	}
+	r := manual.NewBuilderWithScheme(Name)
+	addrList := make([]resolver.Address, len(address))
+	for i, a := range address {
+		addr := resolver.Address{Addr: a.Endpoint}
+		addr = pkg.SetAddrInfo(addr, a)
 		addrList[i] = addr
 	}
-
 	r.InitialState(resolver.State{Addresses: addrList})
-	return &StaticRegistry{r}, nil
+
+	s.res[serverName] = r
+	return r, nil
+
+}
+func (s *StaticRegistry) Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	delete(s.res, serverName)
+	s.address[serverName] = append(s.address[serverName], addr)
+	return nil
+}
+func (s *StaticRegistry) UnRegistry(ctx context.Context, serverName string, addr *pkg.AddrInfo) {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	raw := s.address[serverName]
+	ret := make([]*pkg.AddrInfo, 0)
+	for _, r := range raw {
+		if addr.Name != r.Name && addr.Endpoint != addr.Endpoint {
+			ret = append(ret, r)
+		}
+	}
+}
+
+// 创建Manual
+func NewManual(_ string) (registry.Registry, error) {
+	sr := &StaticRegistry{
+		res:     make(map[string]resolver.Builder),
+		address: make(map[string][]*pkg.AddrInfo),
+		conn:    conn.NewConn(),
+	}
+	return sr, nil
 }

@@ -110,7 +110,7 @@ components:
 components:
    grpc:
       hello: # 服务名
-         Address: localhost:3000 # 链接地址
+         Address: localhost:3000 # 链接地址/注册器地址
          Registry: static # 注册器, 支持 static
          Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
          DisableOpenTrace: false # 是否关闭OpenTrace

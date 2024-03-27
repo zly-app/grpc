@@ -2,10 +2,12 @@ package pkg
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cast"
 	"google.golang.org/grpc/resolver"
 )
 
@@ -85,4 +87,18 @@ func ParseAddr(addr string) (*AddrInfo, error) {
 		Weight:   weight,
 	}
 	return out, err
+}
+
+// 解析绑定端口
+func ParseBindPort(ls net.Listener, bind string) int {
+	addr, ok := ls.Addr().(*net.TCPAddr)
+	if ok {
+		return addr.Port
+	}
+
+	k := strings.LastIndex(bind, ":")
+	if k == -1 {
+		return 0
+	}
+	return cast.ToInt(bind[k+1:])
 }

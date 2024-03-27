@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/handler"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -15,6 +17,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
+
+	"github.com/zly-app/grpc/pkg"
+	"github.com/zly-app/grpc/registry"
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
@@ -76,13 +81,51 @@ func (g *GRpcServer) RegistryServerHandler(hs ...func(ctx context.Context, serve
 }
 
 func (g *GRpcServer) Start() error {
+	// 获取注册器
+	r, err := registry.GetRegistry(strings.ToLower(g.conf.Registry), g.conf.RegistryAddress)
+	if err != nil {
+		return fmt.Errorf("获取注册器失败: %v", err)
+	}
+
+	// 开始监听
 	listener, err := net.Listen("tcp", g.conf.Bind)
 	if err != nil {
 		return err
 	}
 
+	unRegistry := false
+	// 注册
+	go func() {
+		time.Sleep(time.Second * 3)
+		if unRegistry {
+			return
+		}
+
+		addr := &pkg.AddrInfo{
+			Name:     g.conf.PublishName,
+			Endpoint: g.conf.PublishAddress,
+			Weight:   g.conf.PublishWeight,
+		}
+		if addr.Endpoint == "" {
+			addr.Endpoint = fmt.Sprintf("%s:%d", g.app.GetConfig().Config().Frame.Instance, pkg.ParseBindPort(listener, g.conf.Bind))
+		}
+		if addr.Name == "" {
+			addr.Name = addr.Endpoint
+		}
+		err = r.Registry(g.app.BaseContext(), g.app.Name(), addr)
+		if err != nil {
+			g.app.Error("grpc服务注册失败", zap.Error(err))
+			g.app.Exit()
+		}
+
+		handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
+			r.UnRegistry(context.Background(), app.Name(), addr)
+		})
+	}()
+
 	g.app.Info("正在启动grpc服务", zap.String("bind", listener.Addr().String()))
 	err = g.server.Serve(listener)
+	unRegistry = true
 	if err != nil {
 		return err
 	}

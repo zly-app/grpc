@@ -21,6 +21,7 @@ import (
 	"github.com/zly-app/grpc/balance"
 	"github.com/zly-app/grpc/pkg"
 	"github.com/zly-app/grpc/registry"
+	"github.com/zly-app/grpc/registry/static"
 )
 
 type IGrpcConn interface {
@@ -108,7 +109,26 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	if err != nil {
 		return nil, fmt.Errorf("获取注册器失败: %v", err)
 	}
-	reg := grpc.WithResolvers(r)
+	// 静态注册器特殊逻辑
+	if strings.ToLower(conf.Registry) == static.Name {
+		ss := strings.Split(conf.Address, ",")
+		for _, s := range ss {
+			addrInfo, err := pkg.ParseAddr(s)
+			if err != nil {
+				return nil, fmt.Errorf("解析addr失败: %v", err)
+			}
+			err = r.Registry(app.BaseContext(), name, addrInfo)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	// 发现器
+	builder, err := r.GetBuilder(app.BaseContext(), name)
+	if err != nil {
+		return nil, err
+	}
+	reg := grpc.WithResolvers(builder)
 
 	// 获取均衡器
 	balancer, err := balance.GetBalanceDialOption(strings.ToLower(conf.Balance))

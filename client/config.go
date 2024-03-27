@@ -47,7 +47,7 @@ const (
 
 // grpc客户端配置
 type ClientConfig struct {
-	Address           string // 链接地址
+	Address           string // 链接地址/注册器地址
 	Registry          string // 注册器, 支持 static
 	Balance           string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
 	ReqLogLevelIsInfo bool   // 是否将请求日志等级设为info

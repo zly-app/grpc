@@ -8,6 +8,10 @@
 
 package server
 
+import (
+	"github.com/zly-app/grpc/registry/static"
+)
+
 const (
 	// bind地址
 	defBind = ":3000"
@@ -19,6 +23,9 @@ const (
 	defReqDataValidate = true
 	// 是否对请求数据校验所有字段
 	defReqDataValidateAllField = false
+
+	defRegistry = static.Name
+	defWeight   = 100
 )
 
 // grpc服务配置
@@ -30,6 +37,12 @@ type ServerConfig struct {
 	SendDetailedErrorInProduction bool   // 在生产环境发送详细的错误到客户端. 如果设为 false, 在生产环境且错误状态码为 Unknown, 则会返回 service internal error 给客户端.
 	TLSCertFile                   string // tls公钥文件路径
 	TLSKeyFile                    string // tls私钥文件路径
+
+	RegistryAddress string // 注册器链接地址
+	Registry        string // 注册器, 支持 static
+	PublishName     string // 公告名, 在注册中心中定义的名称, 如果为空则自动设为 PublishAddress
+	PublishAddress  string // 公告地址, 在注册中心中定义的地址, 客户端会根据这个地址连接服务端, 如果为空则自动设为 实例ip:BindPort
+	PublishWeight   uint16 // 公告权重, 默认100
 }
 
 func NewServerConfig() *ServerConfig {
@@ -46,6 +59,13 @@ func (conf *ServerConfig) Check() error {
 	}
 	if conf.HeartbeatTime < defMinHeartbeatTime {
 		conf.HeartbeatTime = defMinHeartbeatTime
+	}
+
+	if conf.Registry == "" {
+		conf.Registry = defRegistry
+	}
+	if conf.PublishWeight == 0 {
+		conf.PublishWeight = defWeight
 	}
 	return nil
 }
