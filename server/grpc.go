@@ -20,6 +20,8 @@ import (
 
 	"github.com/zly-app/grpc/pkg"
 	"github.com/zly-app/grpc/registry"
+	_ "github.com/zly-app/grpc/registry/redis"
+	_ "github.com/zly-app/grpc/registry/static"
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
@@ -82,7 +84,7 @@ func (g *GRpcServer) RegistryServerHandler(hs ...func(ctx context.Context, serve
 
 func (g *GRpcServer) Start() error {
 	// 获取注册器
-	r, err := registry.GetRegistry(strings.ToLower(g.conf.Registry), g.conf.RegistryAddress)
+	r, err := registry.GetRegistry(g.app, strings.ToLower(g.conf.RegistryType), g.conf.RegistryName)
 	if err != nil {
 		return fmt.Errorf("获取注册器失败: %v", err)
 	}
@@ -113,13 +115,14 @@ func (g *GRpcServer) Start() error {
 			addr.Name = addr.Endpoint
 		}
 		err = r.Registry(g.app.BaseContext(), g.app.Name(), addr)
+		g.app.Info("grpc服务注册", zap.String("appName", g.app.Name()), zap.Any("addr", addr))
 		if err != nil {
-			g.app.Error("grpc服务注册失败", zap.Error(err))
+			g.app.Error("grpc服务注册失败", zap.String("appName", g.app.Name()), zap.Any("addr", addr), zap.Error(err))
 			g.app.Exit()
 		}
 
 		handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
-			r.UnRegistry(context.Background(), app.Name(), addr)
+			r.UnRegistry(context.Background(), app.Name())
 		})
 	}()
 

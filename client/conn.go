@@ -19,8 +19,10 @@ import (
 	"github.com/zly-app/zapp/pkg/utils"
 
 	"github.com/zly-app/grpc/balance"
+	"github.com/zly-app/grpc/discover"
+	_ "github.com/zly-app/grpc/discover/redis"
+	_ "github.com/zly-app/grpc/discover/static"
 	"github.com/zly-app/grpc/pkg"
-	"github.com/zly-app/grpc/registry"
 	"github.com/zly-app/grpc/registry/static"
 )
 
@@ -104,20 +106,20 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 		return nil, fmt.Errorf("GRpcClient配置检查失败: %v", err)
 	}
 
-	// 获取注册器
-	r, err := registry.GetRegistry(strings.ToLower(conf.Registry), conf.Address)
+	// 获取发现器
+	r, err := discover.GetDiscover(app, strings.ToLower(conf.DiscoverType), conf.Address)
 	if err != nil {
-		return nil, fmt.Errorf("获取注册器失败: %v", err)
+		return nil, fmt.Errorf("获取发现器失败: %v", err)
 	}
-	// 静态注册器特殊逻辑
-	if strings.ToLower(conf.Registry) == static.Name {
+	// 静态发现器特殊逻辑
+	if strings.ToLower(conf.DiscoverType) == static.Name {
 		ss := strings.Split(conf.Address, ",")
 		for _, s := range ss {
 			addrInfo, err := pkg.ParseAddr(s)
 			if err != nil {
 				return nil, fmt.Errorf("解析addr失败: %v", err)
 			}
-			err = r.Registry(app.BaseContext(), name, addrInfo)
+			err = static.DefStatic.Registry(app.BaseContext(), name, addrInfo)
 			if err != nil {
 				return nil, err
 			}
@@ -137,7 +139,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	}
 
 	// 目标
-	target := fmt.Sprintf("%s://%s/%s", conf.Registry, "", name)
+	target := fmt.Sprintf("%s://%s/%s", conf.DiscoverType, "", name)
 
 	// 代理
 	var ss5 utils.ISocks5Proxy

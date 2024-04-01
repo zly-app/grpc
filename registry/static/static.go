@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/zly-app/zapp/component/conn"
+	"github.com/zly-app/zapp/core"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 
@@ -25,6 +26,17 @@ type StaticRegistry struct {
 	mx      sync.RWMutex
 
 	conn *conn.Conn
+}
+
+var DefStatic = newStatic()
+
+func newStatic() *StaticRegistry {
+	s := &StaticRegistry{
+		res:     make(map[string]resolver.Builder),
+		address: make(map[string][]*pkg.AddrInfo),
+		conn:    conn.NewConn(),
+	}
+	return s
 }
 
 func (s *StaticRegistry) Close() {}
@@ -70,25 +82,14 @@ func (s *StaticRegistry) Registry(ctx context.Context, serverName string, addr *
 	s.address[serverName] = append(s.address[serverName], addr)
 	return nil
 }
-func (s *StaticRegistry) UnRegistry(ctx context.Context, serverName string, addr *pkg.AddrInfo) {
+func (s *StaticRegistry) UnRegistry(ctx context.Context, serverName string) {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
-	raw := s.address[serverName]
-	ret := make([]*pkg.AddrInfo, 0)
-	for _, r := range raw {
-		if addr.Name != r.Name && addr.Endpoint != addr.Endpoint {
-			ret = append(ret, r)
-		}
-	}
+	delete(s.address, serverName)
 }
 
 // 创建Manual
-func NewManual(_ string) (registry.Registry, error) {
-	sr := &StaticRegistry{
-		res:     make(map[string]resolver.Builder),
-		address: make(map[string][]*pkg.AddrInfo),
-		conn:    conn.NewConn(),
-	}
-	return sr, nil
+func NewManual(_ core.IApp, _ string) (registry.Registry, error) {
+	return DefStatic, nil
 }

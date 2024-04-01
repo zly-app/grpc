@@ -111,12 +111,8 @@ components:
    grpc:
       hello: # 服务名
          Address: localhost:3000 # 链接地址/注册器地址
-         Registry: static # 注册器, 支持 static
+         DiscoverType: static # 发现器类型, 支持 static, redis
          Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
-         DisableOpenTrace: false # 是否关闭OpenTrace
-         ReqLogLevelIsInfo: true # 是否将请求日志等级设为info
-         RspLogLevelIsInfo: true # 是否将响应日志等级设为info
-         ReqTimeout: 1 # 请求超时, 单位秒, <1表示不限制
          WaitFirstConn: true # 初始化时等待第一个链接
          MinIdle: 2 # 最小闲置
          MaxIdle: 4 # 最大闲置
@@ -172,22 +168,6 @@ components:
 
 如果未对服务节点设置服务名, 则这个服务节点的默认服务名的值为该服务的 `host:端口`, 如: `localhost:3000`, `192.168.1.3:3030`
 
-# 注册器
+# 服务注册与发现
 
-## static
-
-静态注册器. 让客户端主动设置一个或多个服务节点的属性. 如:
-
-+ ```localhost:3000```
-+ ```localhost:3000?weight=100```
-+ ```localhost:3000?weight=100&name=service1```
-+ ```grpc://localhost:3000?weight=100&name=service1```
-+ ```grpc://localhost:3001?weight=100&name=service1,grpc://localhost:3002?weight=100&name=service2```
-
-说明
-
-+ `grpc://` 表示协议类型, 如果未设置默认为 `grpc://`.
-+ `localhost:3000` 为服务节点地址, 必须设置.
-+ `weight` 为该节点设置权重值, 如果未设置默认为 `100`.
-+ `name` 为该节点设置服务名, 如果未设置默认为服务节点地址
-
+转到[这里](../registry/readme.md)

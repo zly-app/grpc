@@ -5,37 +5,42 @@ import (
 	"fmt"
 
 	"github.com/zly-app/zapp/component/conn"
-	"google.golang.org/grpc/resolver"
+	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/handler"
 
 	"github.com/zly-app/grpc/pkg"
 )
 
-type Registry interface {
-	GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error) // 获取builder, 在需要获取client时调用
-	Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error   // 注册, 在服务端启动成功后会调用这个方法
-	UnRegistry(ctx context.Context, serverName string, addr *pkg.AddrInfo)       // 取消注册, 在服务端即将结束前会调用这个方法
-	Close()                                                                      // 关闭注册器
+func init() {
+	handler.AddHandler(handler.AfterExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
+		registryConn.CloseAll()
+	})
 }
 
-type RegistryCreator func(address string) (Registry, error)
+type Registry interface {
+	Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error // 注册, 在服务端启动成功后会调用这个方法
+	UnRegistry(ctx context.Context, serverName string)     // 取消注册, 在服务端即将结束前会调用这个方法
+	Close()                                                                    // 关闭注册器
+}
+
+type RegistryCreator func(app core.IApp, address string) (Registry, error)
 
 var registryCreator = map[string]RegistryCreator{}
 
 var registryConn = conn.NewConn()
 
-// 获取注册器
-func GetRegistry(registryName, registryAddress string) (Registry, error) {
-	ins := registryConn.GetInstance(func(name string) (conn.IInstance, error) {
-		creator, ok := registryCreator[name]
+func GetRegistry(app core.IApp, registryType, registryName string) (Registry, error) {
+	ins := registryConn.GetInstance(func(registryType string) (conn.IInstance, error) {
+		creator, ok := registryCreator[registryType]
 		if !ok {
-			return nil, fmt.Errorf("注册器不存在: %v", name)
+			return nil, fmt.Errorf("注册器不存在: %v", registryType)
 		}
-		r, err := creator(registryAddress)
+		r, err := creator(app, registryName)
 		if err != nil {
 			return nil, fmt.Errorf("创建注册器失败: %v", err)
 		}
 		return r, nil
-	}, registryName)
+	}, registryType)
 	r := ins.(Registry)
 	return r, nil
 }
