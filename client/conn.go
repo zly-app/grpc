@@ -154,7 +154,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	var creator connpool.Creator = func(ctx context.Context) (interface{}, error) {
 		v, err := makeConn(ctx, app, reg, balancer, target, ss5, conf)
 		if err != nil {
-			app.Warn("创建conn失败", zap.String("target", target), zap.Error(err))
+			app.Warn(ctx, "创建conn失败", zap.String("target", target), zap.Error(err))
 		}
 		return v, err
 	}

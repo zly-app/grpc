@@ -149,16 +149,16 @@ func (s *RedisRegistry) registryOne(ctx context.Context, serverName string, reg 
 }
 
 func (s *RedisRegistry) registryAll() {
+	ctx, span := utils.Otel.StartSpan(context.Background(), "ReRegistryGrpcServer")
+	defer utils.Otel.EndSpan(span)
+
 	s.mx.Lock()
 	defer s.mx.Unlock()
-
-	ctx, span := utils.Otel.StartSpan(context.Background(), "RegistryGrpcServer")
-	defer utils.Otel.EndSpan(span)
 
 	for serverName, reg := range s.servers {
 		err := s.registryOne(ctx, serverName, reg)
 		if err != nil {
-			logger.Log.Error(ctx, "Registry grpc server err",
+			logger.Log.Error(ctx, "ReRegistry grpc server err",
 				zap.String("RegistryType", Name),
 				zap.String("serverName", serverName),
 				zap.Any("reg", reg),

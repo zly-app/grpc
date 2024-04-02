@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -12,9 +11,9 @@ import (
 	"github.com/zly-app/component/redis"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/logger"
+	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/resolver/manual"
 
 	"github.com/zly-app/grpc/discover"
 	"github.com/zly-app/grpc/pkg"
@@ -25,9 +24,8 @@ const Name = "redis"
 
 const (
 	DelRegDataThanTimeOverdue = 3600 // 如果旧数据已经过期了则删除, 单位秒
+	ReDiscoverInterval        = 30   // 主动重新发现间隔时间, 单位秒
 )
-
-var ErrNotRouter = errors.New("")
 
 func init() {
 	discover.AddCreator(Name, NewDiscover)
@@ -43,7 +41,7 @@ type RedisDiscover struct {
 }
 
 type RegServer struct {
-	r       *manual.Resolver
+	r       *discover.Resolver
 	regData []*redis_registry.RegServer
 	upTime  int64 // 更新时间, 秒级时间戳
 }
@@ -67,7 +65,7 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 	}
 
 	address := s.makeAddress(regData)
-	r := manual.NewBuilderWithScheme(Name)
+	r := discover.NewBuilderWithScheme(Name)
 	r.InitialState(resolver.State{Addresses: address})
 	reg = &RegServer{
 		r:       r,
@@ -86,7 +84,10 @@ func (s *RedisDiscover) Close() {
 }
 
 func (s *RedisDiscover) start() {
-
+	s.t = time.NewTicker(time.Second * ReDiscoverInterval)
+	for range s.t.C {
+		s.reDiscoverAll()
+	}
 }
 
 func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*redis_registry.RegServer, error) {
@@ -163,7 +164,7 @@ func (s *RedisDiscover) makeAddress(regData []*redis_registry.RegServer) []resol
 	return addrList
 }
 
-func (s *RedisDiscover) reDiscover(ctx context.Context, serverName string) error {
+func (s *RedisDiscover) reDiscoverOne(ctx context.Context, serverName string) error {
 	regData, err := s.discoverOne(ctx, serverName)
 	if err != nil {
 		return err
@@ -178,8 +179,56 @@ func (s *RedisDiscover) reDiscover(ctx context.Context, serverName string) error
 	if !ok {
 		return nil
 	}
-	reg.r.UpdateState(resolver.State{Addresses: addrList})
+
+	// 对比
+	needUpdate := false
+	if len(regData) != len(reg.regData) {
+		needUpdate = true
+	} else {
+		for i := range regData {
+			if regData[i].SeqNo != regData[i].SeqNo {
+				needUpdate = true
+				break
+			}
+		}
+	}
+
+	if needUpdate {
+		reg.r.UpdateState(resolver.State{Addresses: addrList})
+		reg.regData = regData
+	}
+	reg.upTime = time.Now().Unix()
 	return nil
+}
+
+func (s *RedisDiscover) reDiscoverAll() {
+	ctx, span := utils.Otel.StartSpan(context.Background(), "ReDiscoverGrpcServer")
+	defer utils.Otel.EndSpan(span)
+
+	s.mx.Lock()
+	copyRes := make(map[string]*RegServer, len(s.res))
+	for k, v := range s.res {
+		copyRes[k] = v
+	}
+	s.mx.Unlock()
+
+	for serverName, reg := range copyRes {
+		nowUnix := time.Now().Unix()
+		if nowUnix-reg.upTime < ReDiscoverInterval/2 {
+			continue
+		}
+
+		err := s.reDiscoverOne(ctx, serverName)
+		if err != nil {
+			logger.Log.Error(ctx, "ReDiscover grpc server err",
+				zap.String("DiscoverType", Name),
+				zap.String("serverName", serverName),
+				zap.Any("reg", reg),
+				zap.Error(err),
+			)
+			return
+		}
+	}
 }
 
 func NewDiscover(app core.IApp, address string) (discover.Discover, error) {
