@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/resolver"
+
+	rredis "github.com/redis/go-redis/v9"
 
 	"github.com/zly-app/grpc/discover"
 	"github.com/zly-app/grpc/pkg"
@@ -34,8 +37,9 @@ func init() {
 type RedisDiscover struct {
 	creator redis.IRedisCreator
 	client  redis.UniversalClient
-	t       *time.Ticker
+	sub     *rredis.PubSub
 
+	t   *time.Ticker
 	res map[string]*RegServer
 	mx  sync.Mutex
 }
@@ -44,6 +48,63 @@ type RegServer struct {
 	r       *discover.Resolver
 	regData []*redis_registry.RegServer
 	upTime  int64 // 更新时间, 秒级时间戳
+	mx      sync.Mutex
+}
+
+func (r *RegServer) Remove(seqNo int) {
+	r.mx.Lock()
+	defer r.mx.Unlock()
+
+	regData := make([]*redis_registry.RegServer, 0, len(r.regData))
+	for i := range r.regData {
+		if r.regData[i].SeqNo != seqNo {
+			regData = append(regData, r.regData[i])
+		}
+	}
+	if len(regData) == len(r.regData) { // 没有变化/没有找到要移除的
+		return
+	}
+	r.update(regData)
+}
+func (r *RegServer) Add(reg *redis_registry.RegServer) {
+	r.mx.Lock()
+	defer r.mx.Unlock()
+
+	for i := range r.regData {
+		if r.regData[i].SeqNo == reg.SeqNo {
+			return
+		}
+	}
+
+	r.regData = append(r.regData, reg)
+	r.update(r.regData)
+}
+
+func (r *RegServer) update(regData []*redis_registry.RegServer) {
+	addrList := makeAddress(regData)
+	r.regData = regData
+	r.r.UpdateState(resolver.State{Addresses: addrList})
+	r.upTime = time.Now().Unix()
+}
+func (r *RegServer) TryUpdate(regData []*redis_registry.RegServer) {
+	r.mx.Lock()
+	defer r.mx.Unlock()
+
+	if len(regData) != len(r.regData) {
+		r.update(regData)
+		return
+	}
+
+	// 对比
+	for i := range regData {
+		if regData[i].SeqNo != regData[i].SeqNo {
+			r.update(regData)
+			return
+		}
+	}
+
+	// 仅更新时间
+	r.upTime = time.Now().Unix()
 }
 
 func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error) {
@@ -64,7 +125,7 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 		return nil, fmt.Errorf("server %s not found router", serverName)
 	}
 
-	address := s.makeAddress(regData)
+	address := makeAddress(regData)
 	r := discover.NewBuilderWithScheme(Name)
 	r.InitialState(resolver.State{Addresses: address})
 	reg = &RegServer{
@@ -72,11 +133,23 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 		regData: regData,
 		upTime:  time.Now().Unix(),
 	}
+
+	signalKey := redis_registry.GenRegSignalKey(serverName)
+	err = s.sub.Subscribe(ctx, signalKey)
+	if err != nil {
+		logger.Log.Error(ctx, "Discover grpc server subscribe err",
+			zap.String("RegistryType", Name),
+			zap.String("serverName", serverName),
+			zap.Error(err),
+		)
+		return nil, err
+	}
 	s.res[serverName] = reg
 	return reg.r, nil
 }
 
 func (s *RedisDiscover) Close() {
+	_ = s.sub.Close()
 	s.creator.Close()
 	if s.t != nil {
 		s.t.Stop()
@@ -84,6 +157,35 @@ func (s *RedisDiscover) Close() {
 }
 
 func (s *RedisDiscover) start() {
+	go func() {
+		for msg := range s.sub.Channel() {
+			if !strings.HasPrefix(msg.Channel, redis_registry.KeyRegSignal) {
+				continue
+			}
+			serverName := msg.Channel[len(redis_registry.KeyRegSignal):]
+			s.mx.Lock()
+			reg, ok := s.res[serverName]
+			s.mx.Unlock()
+			if !ok {
+				continue
+			}
+
+			signal := redis_registry.RegSignal{}
+			err := sonic.UnmarshalString(msg.Payload, &signal)
+			if err != nil || signal.Reg == nil {
+				continue // 抛弃异常信号
+			}
+
+			if signal.IsUnReg {
+				reg.Remove(signal.Reg.SeqNo)
+				continue
+			}
+
+			reg.Add(signal.Reg)
+		}
+	}()
+
+	// 定时主动发现
 	s.t = time.NewTicker(time.Second * ReDiscoverInterval)
 	for range s.t.C {
 		s.reDiscoverAll()
@@ -150,7 +252,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 	return ret, nil
 }
 
-func (s *RedisDiscover) makeAddress(regData []*redis_registry.RegServer) []resolver.Address {
+func makeAddress(regData []*redis_registry.RegServer) []resolver.Address {
 	addrList := make([]resolver.Address, 0, len(regData))
 	for _, a := range regData {
 		addr := resolver.Address{Addr: a.Endpoint}
@@ -164,40 +266,18 @@ func (s *RedisDiscover) makeAddress(regData []*redis_registry.RegServer) []resol
 	return addrList
 }
 
-func (s *RedisDiscover) reDiscoverOne(ctx context.Context, serverName string) error {
+func (s *RedisDiscover) reDiscoverOne(ctx context.Context, serverName string, reg *RegServer) error {
+	nowUnix := time.Now().Unix()
+	if nowUnix-reg.upTime < ReDiscoverInterval/2 { // 最近有更新则不需要主动发现
+		return nil
+	}
+
 	regData, err := s.discoverOne(ctx, serverName)
 	if err != nil {
 		return err
 	}
 
-	addrList := s.makeAddress(regData)
-
-	s.mx.Lock()
-	defer s.mx.Unlock()
-
-	reg, ok := s.res[serverName]
-	if !ok {
-		return nil
-	}
-
-	// 对比
-	needUpdate := false
-	if len(regData) != len(reg.regData) {
-		needUpdate = true
-	} else {
-		for i := range regData {
-			if regData[i].SeqNo != regData[i].SeqNo {
-				needUpdate = true
-				break
-			}
-		}
-	}
-
-	if needUpdate {
-		reg.r.UpdateState(resolver.State{Addresses: addrList})
-		reg.regData = regData
-	}
-	reg.upTime = time.Now().Unix()
+	reg.TryUpdate(regData)
 	return nil
 }
 
@@ -213,12 +293,7 @@ func (s *RedisDiscover) reDiscoverAll() {
 	s.mx.Unlock()
 
 	for serverName, reg := range copyRes {
-		nowUnix := time.Now().Unix()
-		if nowUnix-reg.upTime < ReDiscoverInterval/2 {
-			continue
-		}
-
-		err := s.reDiscoverOne(ctx, serverName)
+		err := s.reDiscoverOne(ctx, serverName, reg)
 		if err != nil {
 			logger.Log.Error(ctx, "ReDiscover grpc server err",
 				zap.String("DiscoverType", Name),
@@ -237,7 +312,9 @@ func NewDiscover(app core.IApp, address string) (discover.Discover, error) {
 	rr := &RedisDiscover{
 		creator: creator,
 		client:  client,
-		res:     make(map[string]*RegServer),
+		sub:     client.Subscribe(app.BaseContext()),
+
+		res: make(map[string]*RegServer),
 	}
 	go rr.start()
 	return rr, nil

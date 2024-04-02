@@ -21,13 +21,14 @@ import (
 const Name = "redis"
 
 const (
-	RegistryExpire  = 30   // 注册有效时间, 单位秒
-	ReRegInterval   = 10   // 重新注册间隔时间, 单位秒
+	RegistryExpire = 30 // 注册有效时间, 单位秒
+	ReRegInterval  = 10 // 重新注册间隔时间, 单位秒
 )
 
 const (
-	KeySeqIncr   = "grpc:server:seq:" // 服务申请序号自增号
-	KeyServerReg = "grpc:server:reg:" // 服务注册地址
+	KeySeqIncr   = "grpc:server:seq:"    // 服务申请序号自增号
+	KeyServerReg = "grpc:server:reg:"    // 服务注册地址
+	KeyRegSignal = "grpc:server:signal:" // 注册型号通道
 )
 
 func init() {
@@ -51,6 +52,12 @@ type RegServer struct {
 	Deadline int64  // 截止时间
 }
 
+// 注册信号
+type RegSignal struct {
+	Reg     *RegServer
+	IsUnReg bool // 是否为取消注册
+}
+
 func GenSeqKey(serverName string) string {
 	return KeySeqIncr + serverName
 }
@@ -61,6 +68,10 @@ func GenRegKey(serverName string) string {
 
 func GenRegField(seq int) string {
 	return cast.ToString(seq)
+}
+
+func GenRegSignalKey(serverName string) string {
+	return KeyRegSignal + serverName
 }
 
 func (s *RedisRegistry) Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error {
@@ -87,6 +98,22 @@ func (s *RedisRegistry) Registry(ctx context.Context, serverName string, addr *p
 		return err
 	}
 
+	signalKey := GenRegSignalKey(serverName)
+	signalText, _ := sonic.MarshalString(&RegSignal{
+		Reg:     reg,
+		IsUnReg: false,
+	})
+	err = s.client.Publish(ctx, signalKey, signalText).Err()
+	if err != nil {
+		logger.Log.Error(ctx, "Registry grpc server. publish reg signal err",
+			zap.String("RegistryType", Name),
+			zap.String("serverName", serverName),
+			zap.Any("addr", reg),
+			zap.Error(err),
+		)
+		// 忽略异常
+	}
+
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
@@ -102,9 +129,25 @@ func (s *RedisRegistry) UnRegistry(ctx context.Context, serverName string) {
 		return
 	}
 
+	signalKey := GenRegSignalKey(serverName)
+	signalText, _ := sonic.MarshalString(&RegSignal{
+		Reg:     reg,
+		IsUnReg: true,
+	})
+	err := s.client.Publish(ctx, signalKey, signalText).Err()
+	if err != nil {
+		logger.Log.Error(ctx, "Registry grpc server. publish reg signal err",
+			zap.String("RegistryType", Name),
+			zap.String("serverName", serverName),
+			zap.Any("addr", reg),
+			zap.Error(err),
+		)
+		// 忽略异常
+	}
+
 	delete(s.servers, serverName)
 	key, field := GenRegKey(serverName), GenRegField(reg.SeqNo)
-	err := s.client.HDel(ctx, key, field).Err()
+	err = s.client.HDel(ctx, key, field).Err()
 	if err != nil {
 		logger.Log.Error(ctx, "UnRegistry grpc server err",
 			zap.String("RegistryType", Name),
