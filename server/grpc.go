@@ -96,9 +96,7 @@ func (g *GRpcServer) Start() error {
 	}
 
 	unRegistry := false
-	// 注册
-	go func() {
-		time.Sleep(time.Second * 3)
+	handler.AddHandler(handler.AfterStartHandler, func(app core.IApp, handlerType handler.HandlerType) {
 		if unRegistry {
 			return
 		}
@@ -124,7 +122,7 @@ func (g *GRpcServer) Start() error {
 		handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
 			r.UnRegistry(context.Background(), app.Name())
 		})
-	}()
+	})
 
 	g.app.Info("正在启动grpc服务", zap.String("bind", listener.Addr().String()))
 	err = g.server.Serve(listener)
