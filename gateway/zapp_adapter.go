@@ -9,6 +9,8 @@ import (
 	"github.com/zly-app/zapp/logger"
 	"github.com/zly-app/zapp/service"
 	"go.uber.org/zap"
+
+	"github.com/zly-app/grpc/client"
 )
 
 // 默认服务类型
@@ -30,6 +32,7 @@ var (
 type ServiceAdapter struct {
 	app    core.IApp
 	server *Gateway
+	conf   *ServerConfig
 }
 
 func (s *ServiceAdapter) Inject(a ...interface{}) {}
@@ -55,6 +58,7 @@ func newServiceAdapter(app core.IApp) core.IService {
 		defService = &ServiceAdapter{
 			app:    app,
 			server: g,
+			conf:   conf,
 		}
 	})
 	return defService
@@ -66,4 +70,9 @@ func GetGatewayMux() *runtime.ServeMux {
 		logger.Log.Fatal("grpc 网关服务未启用")
 	}
 	return defService.server.GetMux()
+}
+
+// 获取grpc客户端conn
+func GetGatewayClientConn(name string) client.ClientConnInterface {
+	return newConn(name)
 }

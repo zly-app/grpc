@@ -15,4 +15,7 @@ var GetGatewayMux = gateway.GetGatewayMux
 // 获取网关数据
 var GetGatewayData = gateway.GetGatewayData
 
+// 获取网关clientConn
+var GetGatewayClientConn = gateway.GetGatewayClientConn
+
 var WithGatewayService = gateway.WithService

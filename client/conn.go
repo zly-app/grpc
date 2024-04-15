@@ -65,8 +65,8 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 		r := req.(*filterReq)
 		sp := rsp.(*filterRsp)
 
-		ctx, opts = pkg.InjectTargetToCtx(ctx, opts)  // 注入 target
-		ctx, opts = pkg.InjectHashKeyToCtx(ctx, opts) // 注入 hash key
+		ctx, opts = pkg.InjectTargetFromOpts(ctx, opts)  // 注入 target
+		ctx, opts = pkg.InjectHashKeyFromOpts(ctx, opts) // 注入 hash key
 
 		conn, err := g.pool.Get(ctx)
 		if err != nil {

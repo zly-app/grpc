@@ -364,7 +364,7 @@ func main() {
 		grpc.WithGatewayService(), // 启用网关服务
 	)
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端. 网关会通过这个client对service发起调用
+	helloClient := hello.NewHelloServiceClient(grpc.GetGatewayClientConn("hello")) // 获取客户端. 网关会通过这个client对service发起调用
 	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), grpc.GetGatewayMux(), helloClient) // 注册网关
 
 	app.Run()
@@ -392,8 +392,8 @@ curl -X POST http://localhost:8080/hello/say -d '{"msg": "hello"}'
 ```yaml
 services:
    grpc-gateway:
-      Bind: :3000 # bind地址
-      CloseWait: 3 # 关闭前等待时间, 单位秒
+      Bind: :8080 # bind地址
+      CloseWait: 3 # 关闭前等待处理时间, 单位秒
 ```
 
 生成 `swagger`

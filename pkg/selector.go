@@ -19,7 +19,7 @@ func WithTarget(target string) grpc.CallOption {
 }
 
 // 将目标注入到ctx
-func InjectTargetToCtx(ctx context.Context, opts []grpc.CallOption) (context.Context, []grpc.CallOption) {
+func InjectTargetFromOpts(ctx context.Context, opts []grpc.CallOption) (context.Context, []grpc.CallOption) {
 	outOpts := make([]grpc.CallOption, 0, len(opts))
 	for _, o := range opts {
 		if target, ok := o.(targetOption); ok {
@@ -49,7 +49,7 @@ func WithHashKey(hashKey string) grpc.CallOption {
 }
 
 // 将key注入到ctx
-func InjectHashKeyToCtx(ctx context.Context, opts []grpc.CallOption) (context.Context, []grpc.CallOption) {
+func InjectHashKeyFromOpts(ctx context.Context, opts []grpc.CallOption) (context.Context, []grpc.CallOption) {
 	outOpts := make([]grpc.CallOption, 0, len(opts))
 	for _, o := range opts {
 		if key, ok := o.(hashKeyOption); ok {
@@ -59,6 +59,11 @@ func InjectHashKeyToCtx(ctx context.Context, opts []grpc.CallOption) (context.Co
 		}
 	}
 	return ctx, outOpts
+}
+
+// 将key注入到ctx
+func InjectHashKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, hashKey{}, hashKeyOption{HashKey: key})
 }
 
 // 从ctx获取key

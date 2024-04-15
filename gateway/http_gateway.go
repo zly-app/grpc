@@ -113,3 +113,13 @@ func GetGatewayData(ctx context.Context) *GatewayData {
 	}
 	return ret
 }
+
+func getGatewayDataByOutgoing(ctx context.Context) *GatewayData {
+	ret := &GatewayData{}
+	mdIn, _ := metadata.FromOutgoingContext(ctx)
+	s, _ := mdIn[GatewayMDataKey]
+	if len(s) > 0 {
+		_ = sonic.UnmarshalString(s[0], ret)
+	}
+	return ret
+}
