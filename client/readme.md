@@ -74,7 +74,7 @@ func main() {
 	app := zapp.NewApp("grpc-client")
 	defer app.Exit()
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
+	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端. 每次请求都应该尽量重新获取客户端
 
 	// 调用
 	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})

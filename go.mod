@@ -8,9 +8,10 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.14.0
 	github.com/json-iterator/go v1.1.12
+	github.com/redis/go-redis/v9 v9.1.0
 	github.com/spf13/cast v1.3.1
 	github.com/zly-app/component/redis v0.0.0-20231026093728-9994f4b941d3
-	github.com/zly-app/zapp v1.3.10
+	github.com/zly-app/zapp v1.3.12
 	github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd
 	github.com/zlyuancn/zbalancer v1.1.0
 	go.opentelemetry.io/otel v1.16.0
@@ -48,7 +49,6 @@ require (
 	github.com/prometheus/procfs v0.11.1 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.0.5 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5 // indirect
-	github.com/redis/go-redis/v9 v9.1.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.10 // indirect
 	github.com/smartystreets/assertions v1.1.1 // indirect
 	github.com/spf13/afero v1.9.2 // indirect

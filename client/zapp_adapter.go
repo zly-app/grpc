@@ -55,7 +55,11 @@ func initGRpcClientCreator() IGRpcClientCreator {
 }
 
 func (c *ClientCreatorAdapter) GetClientConn(name string) ClientConnInterface {
-	return c.conn.GetInstance(c.makeClient, name).(*instance).cc
+	ins, err := c.conn.GetConn(c.makeClient, name)
+	if err != nil {
+		return newErrConn(err)
+	}
+	return ins.(*instance).cc
 }
 
 func (c *ClientCreatorAdapter) Close() {
