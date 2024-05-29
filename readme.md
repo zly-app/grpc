@@ -39,8 +39,6 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 4. 获取依赖 proto 文件
 
-> 官方 proto 文件参考 https://github.com/googleapis/googleapis/
-
 linux
 
 ```bash
@@ -48,7 +46,7 @@ mkdir -p ${GOPATH}/protos/zly-app && cd ${GOPATH}/protos/zly-app
 git clone --depth=1 https://github.com/zly-app/grpc.git
 ```
 
-Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths`, 取消勾选 `Configure automatically`.
+Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers/协议缓冲区` 的 `Import Paths`, 取消勾选 `Configure automatically/自动配置`.
 将 `${GOPATH}/protos/zly-app/grpc/protos` 添加到 IDE 的 proto 导入路径.
 
 win
@@ -59,8 +57,10 @@ cd /d %GOPATH%\protos\zly-app
 git clone --depth=1 https://github.com/zly-app/grpc.git
 ```
 
-Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers` 的 `Import Paths`, 取消勾选 `Configure automatically`.
+Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers/协议缓冲区` 的 `Import Paths`, 取消勾选 `Configure automatically/自动配置`.
 将 `%GOPATH%\protos\zly-app\grpc\protos` 添加到 IDE 的 proto 导入路径.
+
+> 官方 proto 文件参考 https://github.com/googleapis/googleapis/
 
 # 示例项目
 
@@ -410,4 +410,4 @@ pb/hello/hello.proto
 
 # 服务注册与发现
 
-转到[这里](../registry/readme.md)
+转到[这里](./registry/readme.md)
