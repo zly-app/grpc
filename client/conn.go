@@ -106,55 +106,62 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 		return nil, fmt.Errorf("GRpcClient配置检查失败: %v", err)
 	}
 
-	// 获取发现器
-	r, err := discover.GetDiscover(app, strings.ToLower(conf.DiscoverType), conf.Address)
-	if err != nil {
-		return nil, fmt.Errorf("获取发现器失败: %v", err)
-	}
-	// 静态发现器特殊逻辑
-	if strings.ToLower(conf.DiscoverType) == static.Name {
-		ss := strings.Split(conf.Address, ",")
-		for _, s := range ss {
-			addrInfo, err := pkg.ParseAddr(s)
-			if err != nil {
-				return nil, fmt.Errorf("解析addr失败: %v", err)
-			}
-			err = static.DefStatic.Registry(app.BaseContext(), name, addrInfo)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	// 发现器
-	builder, err := r.GetBuilder(app.BaseContext(), name)
-	if err != nil {
-		return nil, err
-	}
-	reg := grpc.WithResolvers(builder)
-
-	// 获取均衡器
-	balancer, err := balance.GetBalanceDialOption(strings.ToLower(conf.Balance))
-	if err != nil {
-		return nil, fmt.Errorf("获取均衡器失败: %v", err)
-	}
-
-	// 目标
-	target := fmt.Sprintf("%s://%s/%s", conf.DiscoverType, "", name)
-
-	// 代理
-	var ss5 utils.ISocks5Proxy
-	if conf.ProxyAddress != "" {
-		a, err := utils.NewSocks5Proxy(conf.ProxyAddress)
-		if err != nil {
-			return nil, fmt.Errorf("grpc客户端代理创建失败: %v", err)
-		}
-		ss5 = a
-	}
-
 	var creator connpool.Creator = func(ctx context.Context) (interface{}, error) {
+		// 获取发现器
+		r, err := discover.GetDiscover(app, strings.ToLower(conf.DiscoverType), conf.Address)
+		if err != nil {
+			return nil, fmt.Errorf("获取发现器失败: %v", err)
+		}
+		// 静态发现器特殊逻辑
+		if strings.ToLower(conf.DiscoverType) == static.Name {
+			ss := strings.Split(conf.Address, ",")
+			for _, s := range ss {
+				addrInfo, err := pkg.ParseAddr(s)
+				if err != nil {
+					return nil, fmt.Errorf("解析addr失败: %v", err)
+				}
+				err = static.DefStatic.Registry(app.BaseContext(), name, addrInfo)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		// 发现器
+		builder, err := r.GetBuilder(app.BaseContext(), name)
+		if err != nil {
+			return nil, err
+		}
+		reg := grpc.WithResolvers(builder)
+
+		// 获取均衡器
+		balancer, err := balance.GetBalanceDialOption(strings.ToLower(conf.Balance))
+		if err != nil {
+			return nil, fmt.Errorf("获取均衡器失败: %v", err)
+		}
+
+		// 目标
+		target := fmt.Sprintf("%s://%s/%s", conf.DiscoverType, "", name)
+
+		// 代理
+		var ss5 utils.ISocks5Proxy
+		if conf.ProxyAddress != "" {
+			a, err := utils.NewSocks5Proxy(conf.ProxyAddress)
+			if err != nil {
+				return nil, fmt.Errorf("grpc客户端代理创建失败: %v", err)
+			}
+			ss5 = a
+		}
+
 		v, err := makeConn(ctx, app, reg, balancer, target, ss5, conf)
 		if err != nil {
 			app.Warn(ctx, "创建conn失败", zap.String("target", target), zap.Error(err))
+		}
+		return v, err
+	}
+	var logCreator connpool.Creator = func(ctx context.Context) (interface{}, error) {
+		v, err := creator(ctx)
+		if err != nil {
+			app.Error(ctx, "creator err", zap.Error(err))
 		}
 		return v, err
 	}
@@ -168,7 +175,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 		v, ok := conn.GetConn().(*grpc.ClientConn)
 		return ok && v.GetState() == connectivity.Ready
 	}
-	pool, err := makePool(conf, creator, connClose, valid)
+	pool, err := makePool(conf, logCreator, connClose, valid)
 	if err != nil {
 		return nil, fmt.Errorf("GRpcClient连接池创建失败: %v", err)
 	}
