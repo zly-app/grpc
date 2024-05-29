@@ -1,8 +1,10 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -14,10 +16,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
-)
 
-const (
-	GatewayMDataKey = "gw.data-bin"
+	"github.com/zly-app/grpc/pkg"
 )
 
 type Gateway struct {
@@ -83,43 +83,19 @@ func (g *Gateway) StartGateway() error {
 
 // grpc元数据注解器
 func gatewayMetadataAnnotator(ctx context.Context, req *http.Request) metadata.MD {
-	d := &GatewayData{
+	body, _ := io.ReadAll(req.Body)
+	_ = req.Body.Close()
+	req.Body = io.NopCloser(bytes.NewReader(body))
+
+	d := &pkg.GatewayData{
 		Method:   req.Method,
 		Path:     req.URL.Path,
 		RawQuery: req.URL.RawQuery,
+		RawBody:  string(body),
 		IP:       RequestExtractIP(req),
 		Headers:  req.Header,
 	}
 	s, _ := sonic.MarshalString(d)
 
-	return metadata.MD{GatewayMDataKey: []string{s}}
-}
-
-type GatewayData struct {
-	Method   string
-	Path     string
-	RawQuery string
-	IP       string
-	Headers  http.Header
-}
-
-// 获取网关数据
-func GetGatewayData(ctx context.Context) *GatewayData {
-	ret := &GatewayData{}
-	mdIn, _ := metadata.FromIncomingContext(ctx)
-	s, _ := mdIn[GatewayMDataKey]
-	if len(s) > 0 {
-		_ = sonic.UnmarshalString(s[0], ret)
-	}
-	return ret
-}
-
-func getGatewayDataByOutgoing(ctx context.Context) *GatewayData {
-	ret := &GatewayData{}
-	mdIn, _ := metadata.FromOutgoingContext(ctx)
-	s, _ := mdIn[GatewayMDataKey]
-	if len(s) > 0 {
-		_ = sonic.UnmarshalString(s[0], ret)
-	}
-	return ret
+	return metadata.MD{pkg.GatewayMDataKey: []string{s}}
 }

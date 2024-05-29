@@ -7,16 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/filter"
+	"github.com/zly-app/zapp/pkg/utils"
 	"github.com/zlyuancn/connpool"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/zly-app/zapp/core"
-	"github.com/zly-app/zapp/filter"
-	"github.com/zly-app/zapp/pkg/utils"
 
 	"github.com/zly-app/grpc/balance"
 	"github.com/zly-app/grpc/discover"
@@ -38,7 +37,8 @@ type GRpcClient struct {
 }
 
 type filterReq struct {
-	Req interface{}
+	Req         interface{}
+	GatewayData string
 }
 type filterRsp struct {
 	Rsp interface{}
@@ -50,7 +50,8 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 	meta.AddCallersSkip(1)
 
 	ctx, _ = pkg.TraceInjectIn(ctx)
-	r := &filterReq{Req: args}
+	gd, _ := pkg.GetGatewayDataByOutgoingRaw(ctx)
+	r := &filterReq{Req: args, GatewayData: gd}
 	sp := &filterRsp{Rsp: reply}
 	err := chain.HandleInject(ctx, r, sp, func(ctx context.Context, req, rsp interface{}) error {
 		ctx, mdOutCopy := pkg.TraceInjectOut(ctx)

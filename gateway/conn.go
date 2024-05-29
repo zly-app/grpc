@@ -36,7 +36,7 @@ func (c *Conn) getContext(ctx context.Context) context.Context {
 	if b.HashKeyByHeader == "" {
 		return ctx
 	}
-	gd := getGatewayDataByOutgoing(ctx)
+	ctx, gd := pkg.GetGatewayDataByOutgoing(ctx)
 	hashKey := gd.Headers.Get(b.HashKeyByHeader)
 	if hashKey == "" {
 		return ctx
