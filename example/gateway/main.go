@@ -14,7 +14,7 @@ func main() {
 		grpc.WithGatewayService(), // 启用网关服务
 	)
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端. 网关会通过这个client对service发起调用
+	helloClient := hello.NewHelloServiceClient(grpc.GetGatewayClientConn("hello")) // 获取客户端. 网关会通过这个client对service发起调用
 	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), grpc.GetGatewayMux(), helloClient) // 注册网关
 
 	app.Run()
