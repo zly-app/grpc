@@ -162,7 +162,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	var logCreator connpool.Creator = func(ctx context.Context) (interface{}, error) {
 		v, err := creator(ctx)
 		if err != nil {
-			app.Error(ctx, "creator err", zap.Error(err))
+			app.Error(ctx, "grpc creator conn err", zap.String("name", name), zap.Error(err))
 		}
 		return v, err
 	}
