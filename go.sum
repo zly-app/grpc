@@ -467,8 +467,8 @@ github.com/zly-app/component/redis v0.0.0-20231026093728-9994f4b941d3/go.mod h1:
 github.com/zly-app/zapp v1.3.7/go.mod h1:xxAyACsD1k2et8PsHV4j40HqVUQQ55sbHEt1J9jIVjU=
 github.com/zly-app/zapp v1.3.12 h1:1GGzMQWN7MB+c9O6UxfFdmLsXWbXzXmfgHotVXB+Q00=
 github.com/zly-app/zapp v1.3.12/go.mod h1:HmrE9OKTwr36gcv+Zy0fSTJzx+WsUF3JEcWSW3YJTwg=
-github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd h1:GF+gHs4BRcx9nA0hNIKIxNj4ZyzK5r36F7VU1/FtLr8=
-github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd/go.mod h1:8LD1Yt5uc6SNBYANF0IpVEx7NM+/d/9+ku5WZ9x/4W8=
+github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97 h1:IxkdvMgQgvkWj3kFY9CR9W4XwtFkj0fOaWJvYuwn3yw=
+github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97/go.mod h1:8LD1Yt5uc6SNBYANF0IpVEx7NM+/d/9+ku5WZ9x/4W8=
 github.com/zlyuancn/zbalancer v1.1.0 h1:bDs59eIkEXUVTdwMKd6pko2PBAEgAw7TgIQwzzYZKjk=
 github.com/zlyuancn/zbalancer v1.1.0/go.mod h1:c8hq0Lig8lOqqXD7YLqPJOFsNROGG5I6N+6AbuutBYI=
 github.com/zlyuancn/zretry v0.0.0-20220514032503-d78bfd22a441 h1:Sw0KI54iN5+zLL74vWx9R1o9S1yWc+f3oRKOjKrMCqA=

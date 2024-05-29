@@ -113,16 +113,15 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 
 	reg, ok := s.res[serverName]
 	if ok {
+		if len(reg.regData) == 0 {
+			return nil, fmt.Errorf("server %s not found router", serverName)
+		}
 		return reg.r, nil
 	}
 
 	regData, err := s.discoverOne(ctx, serverName)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(regData) == 0 {
-		return nil, fmt.Errorf("server %s not found router", serverName)
 	}
 
 	address := makeAddress(regData)
@@ -145,6 +144,9 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 		return nil, err
 	}
 	s.res[serverName] = reg
+	if len(reg.regData) == 0 {
+		return nil, fmt.Errorf("server %s not found router", serverName)
+	}
 	return reg.r, nil
 }
 

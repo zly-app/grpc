@@ -12,7 +12,7 @@ require (
 	github.com/spf13/cast v1.3.1
 	github.com/zly-app/component/redis v0.0.0-20231026093728-9994f4b941d3
 	github.com/zly-app/zapp v1.3.12
-	github.com/zlyuancn/connpool v0.0.0-20220716072504-3e8bf443cffd
+	github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97
 	github.com/zlyuancn/zbalancer v1.1.0
 	go.opentelemetry.io/otel v1.16.0
 	go.uber.org/zap v1.21.0
