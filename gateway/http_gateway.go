@@ -25,6 +25,7 @@ type Gateway struct {
 	bind         string // 网关bind
 	gwMux        *runtime.ServeMux
 	closeWaitSec int
+	httpHandler  http.Handler
 }
 
 func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
@@ -49,11 +50,16 @@ func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
 		runtime.WithMetadata(gatewayMetadataAnnotator),
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, mar),
 	)
+	var httpHandler http.Handler = gwMux
+	if conf.CorsAllowAll {
+		httpHandler = allowCORS(gwMux)
+	}
 	return &Gateway{
 		app:          app,
 		bind:         conf.Bind,
 		gwMux:        gwMux,
 		closeWaitSec: conf.CloseWait,
+		httpHandler:  httpHandler,
 	}, nil
 }
 
@@ -61,12 +67,30 @@ func (g *Gateway) GetMux() *runtime.ServeMux {
 	return g.gwMux
 }
 
+func allowCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := r.Method
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "HEAD, GET, POST, PUT, PATCH, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+		if method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
 func (g *Gateway) StartGateway() error {
 	listener, err := net.Listen("tcp", g.bind)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: g.gwMux}
+	server := &http.Server{Handler: g.httpHandler}
 	handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(g.closeWaitSec)*time.Second)
 		defer cancel()

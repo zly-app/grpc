@@ -13,6 +13,8 @@ const (
 	defBind = ":8080"
 	// 关闭前等待时间, 单位秒
 	defCloseWait = 3
+	// 运行跨域
+	defCorsAllowAll = true
 )
 
 type RouteConfig struct {
@@ -21,15 +23,18 @@ type RouteConfig struct {
 }
 
 type ServerConfig struct {
-	Bind      string // bind地址
-	CloseWait int    // 关闭前等待处理时间, 单位秒
+	Bind         string // bind地址
+	CloseWait    int    // 关闭前等待处理时间, 单位秒
+	CorsAllowAll bool   // 跨域
 
 	Route    []*RouteConfig // 路由配置
 	routeMap map[string]*RouteConfig
 }
 
 func NewServerConfig() *ServerConfig {
-	return &ServerConfig{}
+	return &ServerConfig{
+		CorsAllowAll: defCorsAllowAll,
+	}
 }
 
 func (conf *ServerConfig) Check() error {
