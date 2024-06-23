@@ -23,7 +23,7 @@
 
 1. 创建一个项目
 
-```shell
+```bash
 mkdir client && cd client
 go mod init client
 ```
@@ -49,7 +49,7 @@ message SayResp{
 
 3. 编译 proto
 
-```shell
+```bash
 protoc \
 --go_out=. --go_opt=paths=source_relative \
 --go-grpc_out=. --go-grpc_opt=paths=source_relative \

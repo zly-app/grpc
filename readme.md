@@ -49,11 +49,19 @@ git clone --depth=1 https://github.com/zly-app/grpc.git
 Goland 在 `设置` -> `语言和框架` -> `Protocol Buffers/协议缓冲区` 的 `Import Paths`, 取消勾选 `Configure automatically/自动配置`.
 将 `${GOPATH}/protos/zly-app/grpc/protos` 添加到 IDE 的 proto 导入路径.
 
-win
+win cmd
 
 ```shell
 if not exist %GOPATH%\protos\zly-app mkdir %GOPATH%\protos\zly-app
 cd /d %GOPATH%\protos\zly-app
+git clone --depth=1 https://github.com/zly-app/grpc.git
+```
+
+win PowerShell
+
+```shell
+if not exist $env:GOPATH\protos\zly-app mkdir $env:GOPATH\protos\zly-app
+cd $env:GOPATH\protos\zly-app
 git clone --depth=1 https://github.com/zly-app/grpc.git
 ```
 
@@ -230,6 +238,8 @@ message A {
 
 编译 proto
 
+linux
+
 ```shell
 protoc \
 -I . \
@@ -238,6 +248,29 @@ protoc \
 --validate_out "lang=go:." --validate_opt paths=source_relative \
 pb/a.proto
 ```
+
+win cmd
+
+```shell
+protoc ^
+-I . ^
+-I %GOPATH%/protos/zly-app/grpc/protos ^
+--go_out . --go_opt paths=source_relative ^
+--validate_out "lang=go:." --validate_opt paths=source_relative ^
+pb/a.proto
+```
+
+win PowerShell
+
+```shell
+protoc `
+-I . `
+-I $ehv:GOPATH/protos/zly-app/grpc/protos `
+--go_out . --go_opt paths=source_relative `
+--validate_out "lang=go:." --validate_opt paths=source_relative `
+pb/a.proto
+```
+
 
 # 客户端
 
@@ -333,6 +366,8 @@ message SayResp{
 
 重新编译 proto
 
+linux
+
 ```shell
 protoc \
 -I . \
@@ -340,6 +375,30 @@ protoc \
 --go_out . --go_opt paths=source_relative \
 --go-grpc_out . --go-grpc_opt paths=source_relative \
 --grpc-gateway_out . --grpc-gateway_opt paths=source_relative \
+pb/hello/hello.proto
+```
+
+win cmd
+
+```shell
+protoc ^
+-I . ^
+-I %GOPATH%/protos/zly-app/grpc/protos ^
+--go_out . --go_opt paths=source_relative ^
+--go-grpc_out . --go-grpc_opt paths=source_relative ^
+--grpc-gateway_out . --grpc-gateway_opt paths=source_relative ^
+pb/hello/hello.proto
+```
+
+win PowerShell
+
+```shell
+protoc `
+-I . `
+-I $env:GOPATH/protos/zly-app/grpc/protos `
+--go_out . --go_opt paths=source_relative `
+--go-grpc_out . --go-grpc_opt paths=source_relative `
+--grpc-gateway_out . --grpc-gateway_opt paths=source_relative `
 pb/hello/hello.proto
 ```
 
@@ -398,6 +457,8 @@ services:
 
 生成 `swagger`
 
+linux
+
 ```bash
 protoc \
 -I . \
@@ -407,6 +468,27 @@ protoc \
 pb/hello/hello.proto
 ```
 
+win cmd
+
+```bash
+protoc ^
+-I . ^
+-I %GOPATH%/protos/zly-app/grpc/protos ^
+--openapiv2_out . ^
+--go_out . --go_opt paths=source_relative ^
+pb/hello/hello.proto
+```
+
+win PowerShell
+
+```bash
+protoc `
+-I . `
+-I $env:GOPATH/protos/zly-app/grpc/protos `
+--openapiv2_out . `
+--go_out . --go_opt paths=source_relative `
+pb/hello/hello.proto
+```
 
 # 服务注册与发现
 
