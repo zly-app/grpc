@@ -9,6 +9,7 @@ import (
 	"github.com/zly-app/zapp/logger"
 	"github.com/zly-app/zapp/service"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	"github.com/zly-app/grpc/client"
 )
@@ -73,6 +74,6 @@ func GetGatewayMux() *runtime.ServeMux {
 }
 
 // 获取grpc客户端conn
-func GetGatewayClientConn(name string) client.ClientConnInterface {
-	return newConn(name)
+func GetGatewayClientConn(desc *grpc.ServiceDesc) client.ClientConnInterface {
+	return newConn(desc)
 }

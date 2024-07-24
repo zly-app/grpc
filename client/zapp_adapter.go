@@ -19,7 +19,7 @@ type GRpcClientCreator = func(cc ClientConnInterface) interface{}
 
 type IGRpcClientCreator interface {
 	// 获取grpc客户端conn
-	GetClientConn(name string) ClientConnInterface
+	GetClientConn(desc *grpc.ServiceDesc) ClientConnInterface
 	// 关闭客户端
 	Close()
 }
@@ -54,8 +54,8 @@ func initGRpcClientCreator() IGRpcClientCreator {
 	return defGrpcClientCreator
 }
 
-func (c *ClientCreatorAdapter) GetClientConn(name string) ClientConnInterface {
-	ins, err := c.conn.GetConn(c.makeClient, name)
+func (c *ClientCreatorAdapter) GetClientConn(desc *grpc.ServiceDesc) ClientConnInterface {
+	ins, err := c.conn.GetConn(c.makeClient, desc.ServiceName)
 	if err != nil {
 		return newErrConn(err)
 	}
@@ -83,7 +83,7 @@ func (c *ClientCreatorAdapter) makeClient(name string) (conn.IInstance, error) {
 }
 
 // 获取grpc客户端conn
-func GetClientConn(name string) ClientConnInterface {
+func GetClientConn(desc *grpc.ServiceDesc) ClientConnInterface {
 	initGRpcClientCreator()
-	return defGrpcClientCreator.GetClientConn(name)
+	return defGrpcClientCreator.GetClientConn(desc)
 }

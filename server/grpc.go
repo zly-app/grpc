@@ -28,9 +28,10 @@ type ServiceRegistrar = grpc.ServiceRegistrar
 type GrpcServerHandler = func(ctx context.Context, server ServiceRegistrar)
 
 type GRpcServer struct {
-	app    core.IApp
-	conf   *ServerConfig
-	server *grpc.Server
+	app         core.IApp
+	conf        *ServerConfig
+	server      *grpc.Server
+	serviceDesc []*grpc.ServiceDesc
 }
 
 func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRpcServer, error) {
@@ -71,6 +72,8 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		app:    app,
 		server: server,
 		conf:   conf,
+
+		serviceDesc: make([]*grpc.ServiceDesc, 0),
 	}
 	return g, nil
 }
@@ -78,8 +81,13 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 func (g *GRpcServer) RegistryServerHandler(hs ...func(ctx context.Context, server ServiceRegistrar)) {
 	ctx := context.Background()
 	for _, h := range hs {
-		h(ctx, g.server)
+		h(ctx, g)
 	}
+}
+
+func (g *GRpcServer) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
+	g.server.RegisterService(desc, impl)
+	g.serviceDesc = append(g.serviceDesc, desc)
 }
 
 func (g *GRpcServer) Start() error {
@@ -112,15 +120,20 @@ func (g *GRpcServer) Start() error {
 		if addr.Name == "" {
 			addr.Name = addr.Endpoint
 		}
-		err = r.Registry(g.app.BaseContext(), g.app.Name(), addr)
-		g.app.Info("grpc服务注册", zap.String("appName", g.app.Name()), zap.Any("addr", addr))
-		if err != nil {
-			g.app.Error("grpc服务注册失败", zap.String("appName", g.app.Name()), zap.Any("addr", addr), zap.Error(err))
-			g.app.Exit()
+
+		for _, desc := range g.serviceDesc {
+			err = r.Registry(g.app.BaseContext(), desc.ServiceName, addr)
+			g.app.Info("grpc服务注册", zap.String("ServiceName", desc.ServiceName), zap.Any("addr", addr))
+			if err != nil {
+				g.app.Error("grpc服务注册失败", zap.String("ServiceName", desc.ServiceName), zap.Any("addr", addr), zap.Error(err))
+				g.app.Exit()
+			}
 		}
 
 		handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
-			r.UnRegistry(context.Background(), app.Name())
+			for _, desc := range g.serviceDesc {
+				r.UnRegistry(context.Background(), desc.ServiceName)
+			}
 		})
 	})
 

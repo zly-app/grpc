@@ -7,6 +7,7 @@
 - [请求数据校验](#%E8%AF%B7%E6%B1%82%E6%95%B0%E6%8D%AE%E6%A0%A1%E9%AA%8C)
 - [客户端](#%E5%AE%A2%E6%88%B7%E7%AB%AF)
 - [http网关](#http%E7%BD%91%E5%85%B3)
+- [服务注册与发现](#%E6%9C%8D%E5%8A%A1%E6%B3%A8%E5%86%8C%E4%B8%8E%E5%8F%91%E7%8E%B0)
 
 <!-- /TOC -->
 
@@ -292,7 +293,7 @@ func main() {
 	app := zapp.NewApp("grpc-client")
 	defer app.Exit()
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
+	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn(&hello.HelloService_ServiceDesc)) // 获取客户端
 
 	// 调用
 	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
@@ -423,7 +424,7 @@ func main() {
 		grpc.WithGatewayService(), // 启用网关服务
 	)
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetGatewayClientConn("hello")) // 获取客户端. 网关会通过这个client对service发起调用
+	helloClient := hello.NewHelloServiceClient(grpc.GetGatewayClientConn(&hello.HelloService_ServiceDesc)) // 获取客户端. 网关会通过这个client对service发起调用
 	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), grpc.GetGatewayMux(), helloClient) // 注册网关
 
 	app.Run()

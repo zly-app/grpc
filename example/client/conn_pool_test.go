@@ -35,7 +35,7 @@ func makeHelloClient(poolSize int) (core.IApp, hello.HelloServiceClient) {
 		testApp = app
 	})
 
-	helloClient := hello.NewHelloServiceClient(client.GetClientConn("hello"))
+	helloClient := hello.NewHelloServiceClient(client.GetClientConn(&hello.HelloService_ServiceDesc))
 	return testApp, helloClient
 }
 
@@ -46,7 +46,7 @@ func BenchmarkConnBy1Nums(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+			_, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
 			if err != nil {
 				b.Errorf("调用失败: %v", err)
 			}
@@ -61,7 +61,7 @@ func BenchmarkConnBy5Nums(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err := helloClient.Hello(context.Background(), &hello.HelloReq{Msg: "hello"})
+			_, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
 			if err != nil {
 				b.Errorf("调用失败: %v", err)
 			}
