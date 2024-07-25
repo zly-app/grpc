@@ -24,7 +24,7 @@ const (
 	// 是否对请求数据校验所有字段
 	defReqDataValidateAllField = false
 
-	defRegistryType = static.Name
+	defRegistryType = static.Type
 	defWeight       = 100
 )
 

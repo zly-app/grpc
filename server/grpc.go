@@ -112,7 +112,7 @@ func (g *GRpcServer) Start() error {
 			addr.Endpoint = fmt.Sprintf("%s:%d", g.app.GetConfig().Config().Frame.Instance, pkg.ParseBindPort(listener, g.conf.Bind))
 		}
 		if addr.Name == "" {
-			addr.Name = addr.Endpoint
+			addr.Name = g.serverName
 		}
 
 		err = r.Registry(g.app.BaseContext(), g.serverName, addr)

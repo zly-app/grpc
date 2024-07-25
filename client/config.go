@@ -9,7 +9,7 @@ const (
 	// 连接地址
 	defAddress = "localhost:3000"
 	// 发现器类型
-	defDiscoverType = static.Name
+	defDiscoverType = static.Type
 	// 均衡器
 	defBalance = balance.WeightConsistentHash
 

@@ -23,7 +23,7 @@ import (
 	redis_registry "github.com/zly-app/grpc/registry/redis"
 )
 
-const Name = "redis"
+const Type = "redis"
 
 const (
 	DelRegDataThanTimeOverdue = 3600 // 如果旧数据已经过期了则删除, 单位秒
@@ -31,7 +31,7 @@ const (
 )
 
 func init() {
-	discover.AddCreator(Name, NewDiscover)
+	discover.AddCreator(Type, NewDiscover)
 }
 
 type RedisDiscover struct {
@@ -125,7 +125,7 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 	}
 
 	address := makeAddress(regData)
-	r := discover.NewBuilderWithScheme(Name)
+	r := discover.NewBuilderWithScheme(Type)
 	r.InitialState(resolver.State{Addresses: address})
 	reg = &RegServer{
 		r:       r,
@@ -137,7 +137,7 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 	err = s.sub.Subscribe(ctx, signalKey)
 	if err != nil {
 		logger.Log.Error(ctx, "Discover grpc server subscribe err",
-			zap.String("RegistryType", Name),
+			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Error(err),
 		)
@@ -199,7 +199,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 	data, err := s.client.HGetAll(ctx, key).Result()
 	if err != nil {
 		logger.Log.Error(ctx, "Discover grpc server err",
-			zap.String("RegistryType", Name),
+			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Error(err),
 		)
@@ -214,7 +214,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 		err = sonic.UnmarshalString(regData, &r)
 		if err != nil {
 			logger.Log.Warn(ctx, "Discover grpc Unmarshal regData err",
-				zap.String("RegistryType", Name),
+				zap.String("RegistryType", Type),
 				zap.String("serverName", serverName),
 				zap.String("regData", regData),
 				zap.Error(err),
@@ -225,7 +225,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 		// 检查过期
 		if nowUnix-r.Deadline >= DelRegDataThanTimeOverdue {
 			logger.Log.Warn(ctx, "Discover grpc regData is time overdue",
-				zap.String("RegistryType", Name),
+				zap.String("RegistryType", Type),
 				zap.String("serverName", serverName),
 				zap.String("regData", regData),
 			)
@@ -244,7 +244,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 		err = s.client.HDel(ctx, key, delSeq...).Err()
 		if err != nil {
 			logger.Log.Error(ctx, "Discover grpc del old regData err",
-				zap.String("RegistryType", Name),
+				zap.String("RegistryType", Type),
 				zap.String("serverName", serverName),
 				zap.Strings("delSeq", delSeq),
 				zap.Error(err),
@@ -298,7 +298,7 @@ func (s *RedisDiscover) reDiscoverAll() {
 		err := s.reDiscoverOne(ctx, serverName, reg)
 		if err != nil {
 			logger.Log.Error(ctx, "ReDiscover grpc server err",
-				zap.String("DiscoverType", Name),
+				zap.String("DiscoverType", Type),
 				zap.String("serverName", serverName),
 				zap.Any("reg", reg),
 				zap.Error(err),

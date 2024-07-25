@@ -114,7 +114,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 			return nil, fmt.Errorf("获取发现器失败: %v", err)
 		}
 		// 静态发现器特殊逻辑
-		if strings.ToLower(conf.DiscoverType) == static.Name {
+		if strings.ToLower(conf.DiscoverType) == static.Type {
 			ss := strings.Split(conf.Address, ",")
 			for _, s := range ss {
 				addrInfo, err := pkg.ParseAddr(s)

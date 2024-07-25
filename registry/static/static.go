@@ -14,10 +14,10 @@ import (
 	"github.com/zly-app/grpc/registry"
 )
 
-const Name = "static"
+const Type = "static"
 
 func init() {
-	registry.AddCreator(Name, NewManual)
+	registry.AddCreator(Type, NewManual)
 }
 
 type StaticRegistry struct {
@@ -42,38 +42,30 @@ func newStatic() *StaticRegistry {
 func (s *StaticRegistry) Close() {}
 
 func (s *StaticRegistry) GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error) {
-	s.mx.RLock()
-	b, ok := s.res[serverName]
-	s.mx.RUnlock()
+	ins, err := s.conn.GetConn(func(serverName string) (conn.IInstance, error) {
+		s.mx.Lock()
+		address, ok := s.address[serverName]
+		s.mx.Unlock()
 
-	if ok {
-		return b, nil
+		if !ok || len(address) == 0 {
+			return nil, fmt.Errorf("%s address is empty", serverName)
+		}
+		r := manual.NewBuilderWithScheme(Type)
+		addrList := make([]resolver.Address, len(address))
+		for i, a := range address {
+			addr := resolver.Address{Addr: a.Endpoint}
+			addr = pkg.SetAddrInfo(addr, a)
+			addrList[i] = addr
+		}
+		r.InitialState(resolver.State{Addresses: addrList})
+		return r, nil
+	}, serverName)
+	if err != nil {
+		return nil, err
 	}
-
-	s.mx.Lock()
-	defer s.mx.Unlock()
-	b, ok = s.res[serverName]
-	if ok {
-		return b, nil
-	}
-
-	address, ok := s.address[serverName]
-	if !ok || len(address) == 0 {
-		return nil, fmt.Errorf("%s address is empty", serverName)
-	}
-	r := manual.NewBuilderWithScheme(Name)
-	addrList := make([]resolver.Address, len(address))
-	for i, a := range address {
-		addr := resolver.Address{Addr: a.Endpoint}
-		addr = pkg.SetAddrInfo(addr, a)
-		addrList[i] = addr
-	}
-	r.InitialState(resolver.State{Addresses: addrList})
-
-	s.res[serverName] = r
-	return r, nil
-
+	return ins.(resolver.Builder), nil
 }
+
 func (s *StaticRegistry) Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error {
 	s.mx.Lock()
 	defer s.mx.Unlock()

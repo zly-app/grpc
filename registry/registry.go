@@ -30,7 +30,8 @@ var registryCreator = map[string]RegistryCreator{}
 var registryConn = conn.NewConn()
 
 func GetRegistry(app core.IApp, registryType, registryName string) (Registry, error) {
-	ins, err := registryConn.GetConn(func(registryType string) (conn.IInstance, error) {
+	key := registryType + "/" + registryName
+	ins, err := registryConn.GetConn(func(key string) (conn.IInstance, error) {
 		creator, ok := registryCreator[registryType]
 		if !ok {
 			return nil, fmt.Errorf("注册器不存在: %v", registryType)
@@ -40,7 +41,7 @@ func GetRegistry(app core.IApp, registryType, registryName string) (Registry, er
 			return nil, fmt.Errorf("创建注册器失败: %v", err)
 		}
 		return r, nil
-	}, registryType)
+	}, key)
 	if err != nil {
 		return nil, err
 	}

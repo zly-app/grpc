@@ -28,7 +28,8 @@ var discoverCreator = map[string]DiscoverCreator{}
 var discoverConn = conn.NewConn()
 
 func GetDiscover(app core.IApp, discoverType, discoverAddress string) (Discover, error) {
-	ins := discoverConn.GetInstance(func(discoverType string) (conn.IInstance, error) {
+	key := discoverType + "/" + discoverAddress
+	ins, err := discoverConn.GetConn(func(key string) (conn.IInstance, error) {
 		creator, ok := discoverCreator[discoverType]
 		if !ok {
 			return nil, fmt.Errorf("发现器不存在: %v", discoverType)
@@ -38,11 +39,14 @@ func GetDiscover(app core.IApp, discoverType, discoverAddress string) (Discover,
 			return nil, fmt.Errorf("创建发现器失败: %v", err)
 		}
 		return r, nil
-	}, discoverType)
+	}, key)
+	if err != nil {
+		return nil, err
+	}
 	r := ins.(Discover)
 	return r, nil
 }
 
-func AddCreator(discoverName string, d DiscoverCreator) {
-	discoverCreator[discoverName] = d
+func AddCreator(discoverType string, d DiscoverCreator) {
+	discoverCreator[discoverType] = d
 }

@@ -10,23 +10,23 @@ import (
 	"github.com/zly-app/grpc/registry/static"
 )
 
-const Name = static.Name
+const Type = static.Type
 
 func init() {
-	discover.AddCreator(Name, NewManual)
+	discover.AddCreator(Type, NewManual)
 }
 
-type StaticRegistry struct {
-}
+var defStaticDiscover discover.Discover = StaticDiscover{}
 
-func (s *StaticRegistry) Close() {}
+type StaticDiscover struct{}
 
-func (s *StaticRegistry) GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error) {
+func (s StaticDiscover) Close() {}
+
+func (s StaticDiscover) GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error) {
 	return static.DefStatic.GetBuilder(ctx, serverName)
 }
 
 // 创建Manual
 func NewManual(_ core.IApp, _ string) (discover.Discover, error) {
-	sr := &StaticRegistry{}
-	return sr, nil
+	return defStaticDiscover, nil
 }
