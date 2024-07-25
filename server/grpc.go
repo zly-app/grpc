@@ -127,7 +127,7 @@ func (g *GRpcServer) Start() error {
 		})
 	})
 
-	g.app.Info("正在启动grpc服务", zap.String("bind", listener.Addr().String()))
+	g.app.Info("正在启动grpc服务", zap.String("serverName", g.serverName), zap.String("bind", listener.Addr().String()))
 	go func() {
 		err = g.server.Serve(listener)
 		atomic.StoreInt32(&isRegistry, 0)

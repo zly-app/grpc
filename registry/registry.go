@@ -19,7 +19,7 @@ func init() {
 
 type Registry interface {
 	Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error // 注册, 在服务端启动成功后会调用这个方法
-	UnRegistry(ctx context.Context, serverName string)     // 取消注册, 在服务端即将结束前会调用这个方法
+	UnRegistry(ctx context.Context, serverName string)                         // 取消注册, 在服务端即将结束前会调用这个方法
 	Close()                                                                    // 关闭注册器
 }
 
@@ -30,7 +30,7 @@ var registryCreator = map[string]RegistryCreator{}
 var registryConn = conn.NewConn()
 
 func GetRegistry(app core.IApp, registryType, registryName string) (Registry, error) {
-	ins := registryConn.GetInstance(func(registryType string) (conn.IInstance, error) {
+	ins, err := registryConn.GetConn(func(registryType string) (conn.IInstance, error) {
 		creator, ok := registryCreator[registryType]
 		if !ok {
 			return nil, fmt.Errorf("注册器不存在: %v", registryType)
@@ -41,6 +41,9 @@ func GetRegistry(app core.IApp, registryType, registryName string) (Registry, er
 		}
 		return r, nil
 	}, registryType)
+	if err != nil {
+		return nil, err
+	}
 	r := ins.(Registry)
 	return r, nil
 }
