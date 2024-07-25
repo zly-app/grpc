@@ -35,7 +35,7 @@ func makeHelloClient(poolSize int) (core.IApp, hello.HelloServiceClient) {
 		testApp = app
 	})
 
-	helloClient := hello.NewHelloServiceClient(client.GetClientConn(&hello.HelloService_ServiceDesc))
+	helloClient := hello.NewHelloServiceClient(client.GetClientConn("hello"))
 	return testApp, helloClient
 }
 

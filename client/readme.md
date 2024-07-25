@@ -74,7 +74,7 @@ func main() {
 	app := zapp.NewApp("grpc-client")
 	defer app.Exit()
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn(&hello.HelloService_ServiceDesc)) // 获取客户端. 每次请求都应该尽量重新获取客户端
+	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端. 每次请求都应该尽量重新获取客户端
 
 	// 调用
 	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
@@ -100,7 +100,7 @@ go mod tidy && go run .
 ```yaml
 components:
    grpc:
-      hello.helloService: # 客户端名
+      hello: # 客户端名
          Address: localhost:3000 # 链接地址
 ```
 
@@ -109,7 +109,7 @@ components:
 ```yaml
 components:
    grpc:
-      hello.helloService: # 服务名 ServiceDesc.ServiceName
+      hello: # 服务名 ServiceDesc.ServiceName
          Address: localhost:3000 # 链接地址/注册器地址
          DiscoverType: static # 发现器类型, 支持 static, redis
          Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash

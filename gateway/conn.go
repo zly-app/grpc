@@ -45,7 +45,7 @@ func (c *Conn) getContext(ctx context.Context) context.Context {
 	return ctx
 }
 
-func newConn(desc *grpc.ServiceDesc) client.ClientConnInterface {
-	cc := client.GetClientConn(desc)
+func newConn(serverName string) client.ClientConnInterface {
+	cc := client.GetClientConn(serverName)
 	return &Conn{cc: cc}
 }

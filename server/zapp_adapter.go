@@ -1,78 +1,101 @@
 package server
 
 import (
-	"fmt"
-	"sync"
+	"context"
 
 	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/logger"
 	"github.com/zly-app/zapp/service"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // 默认服务类型
 const DefaultServiceType core.ServiceType = "grpc"
 
+type GrpcServerHandler = func(ctx context.Context, server ServiceRegistrar)
+
+func init() {
+	service.RegisterCreatorFunc(DefaultServiceType, func(app core.IApp) core.IService {
+		defService.app = app
+		return defService
+	})
+}
+
 // 启用grpc服务
 func WithService(hooks ...ServerHook) zapp.Option {
-	service.RegisterCreatorFunc(DefaultServiceType, func(app core.IApp) core.IService {
-		return newServiceAdapter(app, hooks...)
-	})
+	defService.hooks = append(defService.hooks, hooks...)
 	return zapp.WithService(DefaultServiceType)
 }
 
-// 注册grpc服务handler
-func RegistryServerHandler(h GrpcServerHandler) {
-	zapp.App().InjectService(DefaultServiceType, h)
-}
-
-var (
-	defService     *ServiceAdapter
-	defServiceOnce sync.Once
-)
+var defService = &ServiceAdapter{}
 
 type ServiceAdapter struct {
-	app    core.IApp
-	server *GRpcServer
+	app   core.IApp
+	hooks []ServerHook
+
+	server []*GRpcServer
 }
 
 func (s *ServiceAdapter) Inject(a ...interface{}) {
-	for _, v := range a {
-		switch h := v.(type) {
-		case GrpcServerHandler:
-			s.server.RegistryServerHandler(h)
-		default:
-			s.app.Fatal("grpc服务注入类型错误", zap.String("Type", fmt.Sprintf("%T", v)))
-		}
+	logger.Fatal("grpc不支持Inject, 请使用 pb.RegisterXXXServiceServer(grpc.Server(serverName), impl)")
+}
+
+func (s *ServiceAdapter) RegisterService(serverName string, desc *grpc.ServiceDesc, impl interface{}, hooks ...ServerHook) {
+	conf := NewServerConfig()
+	err := s.app.GetConfig().ParseServiceConfig(DefaultServiceType+"."+core.ServiceType(serverName), conf, true)
+	if err != nil {
+		logger.Log.Panic("grpc服务配置错误", zap.String("serverName", serverName), zap.Error(err))
 	}
+
+	hook := s.hooks
+	if len(hooks) > 0 {
+		hook = make([]ServerHook, 0, len(s.hooks)+len(hooks))
+		hook = append(hook, s.hooks...)
+		hook = append(hook, hooks...)
+	}
+	g, err := NewGRpcServer(s.app, conf, hook...)
+	if err != nil {
+		logger.Log.Panic("创建grpc服务失败", zap.String("serverName", serverName), zap.Error(err))
+	}
+	g.RegisterService(serverName, desc, impl)
+	defService.server = append(defService.server, g)
 }
 
 func (s *ServiceAdapter) Start() error {
-	return s.server.Start()
-}
-
-func (s *ServiceAdapter) Close() error {
-	s.server.Close()
+	for _, g := range s.server {
+		err := g.Start()
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func newServiceAdapter(app core.IApp, hooks ...ServerHook) core.IService {
-	defServiceOnce.Do(func() {
-		conf := NewServerConfig()
-		err := app.GetConfig().ParseServiceConfig(DefaultServiceType, conf, true)
-		if err != nil {
-			logger.Log.Panic("grpc服务配置错误", zap.String("serviceType", string(DefaultServiceType)), zap.Error(err))
-		}
+func (s *ServiceAdapter) Close() error {
+	for _, g := range s.server {
+		g.Close()
+	}
+	return nil
+}
 
-		g, err := NewGRpcServer(app, conf, hooks...)
-		if err != nil {
-			logger.Log.Panic("创建grpc服务失败", zap.String("serviceType", string(DefaultServiceType)), zap.Error(err))
-		}
-		defService = &ServiceAdapter{
-			app:    app,
-			server: g,
-		}
-	})
-	return defService
+type serverNameCli struct {
+	serverName string
+	hooks      []ServerHook
+}
+
+func (s serverNameCli) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
+	if s.serverName == "" {
+		s.serverName = desc.ServiceName
+	}
+	defService.RegisterService(s.serverName, desc, impl, s.hooks...)
+}
+
+func Server(serverName string, hooks ...ServerHook) ServiceRegistrar {
+	return &serverNameCli{serverName: serverName, hooks: hooks}
+}
+
+func ServerDesc(hooks ...ServerHook) ServiceRegistrar {
+	return &serverNameCli{serverName: "", hooks: hooks}
 }

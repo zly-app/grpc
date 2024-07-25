@@ -26,10 +26,8 @@ func main() {
 		grpc.WithService(), // 启用 grpc 服务
 	)
 
-	// 注册rpc服务handler
-	grpc.RegistryServerHandler(func(ctx context.Context, server grpc.ServiceRegistrar) {
-		hello.RegisterHelloServiceServer(server, new(HelloService)) // 注册 hello 服务
-	})
+	// 注册rpc服务
+	hello.RegisterHelloServiceServer(grpc.Server("hello"), new(HelloService))
 
 	app.Run()
 }

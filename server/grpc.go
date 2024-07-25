@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/handler"
+	"github.com/zly-app/zapp/logger"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -25,22 +27,26 @@ import (
 )
 
 type ServiceRegistrar = grpc.ServiceRegistrar
-type GrpcServerHandler = func(ctx context.Context, server ServiceRegistrar)
 
 type GRpcServer struct {
-	app         core.IApp
-	conf        *ServerConfig
-	server      *grpc.Server
-	serviceDesc []*grpc.ServiceDesc
+	app    core.IApp
+	conf   *ServerConfig
+	server *grpc.Server
+
+	serverName  string
+	serviceDesc *grpc.ServiceDesc
 }
 
 func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRpcServer, error) {
 	if err := conf.Check(); err != nil {
 		return nil, fmt.Errorf("GrpcServer配置检查失败: %v", err)
 	}
-
+	g := &GRpcServer{
+		app:  app,
+		conf: conf,
+	}
 	chainUnaryClientList := []grpc.UnaryServerInterceptor{
-		AppFilter,
+		g.AppFilter,
 		ReturnErrorInterceptor(app, conf), // 返回错误拦截
 	}
 	if conf.ReqDataValidate && !conf.ReqDataValidateAllField {
@@ -59,7 +65,7 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		cred = grpc.Creds(tc)
 	}
 
-	server := grpc.NewServer(
+	g.server = grpc.NewServer(
 		cred,
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time: time.Duration(conf.HeartbeatTime) * time.Second, // 心跳
@@ -67,45 +73,33 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(chainUnaryClientList...)),
 		grpc.ChainUnaryInterceptor(HookInterceptor(hooks...)), // 请求拦截
 	)
-
-	g := &GRpcServer{
-		app:    app,
-		server: server,
-		conf:   conf,
-
-		serviceDesc: make([]*grpc.ServiceDesc, 0),
-	}
 	return g, nil
 }
 
-func (g *GRpcServer) RegistryServerHandler(hs ...func(ctx context.Context, server ServiceRegistrar)) {
-	ctx := context.Background()
-	for _, h := range hs {
-		h(ctx, g)
-	}
-}
-
-func (g *GRpcServer) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
+func (g *GRpcServer) RegisterService(serverName string, desc *grpc.ServiceDesc, impl interface{}) {
 	g.server.RegisterService(desc, impl)
-	g.serviceDesc = append(g.serviceDesc, desc)
+	g.serverName = serverName
+	g.serviceDesc = desc
 }
 
 func (g *GRpcServer) Start() error {
 	// 获取注册器
 	r, err := registry.GetRegistry(g.app, strings.ToLower(g.conf.RegistryType), g.conf.RegistryName)
 	if err != nil {
+		logger.Error("grpc 获取注册器失败", zap.String("serverName", g.serverName), zap.Error(err))
 		return fmt.Errorf("获取注册器失败: %v", err)
 	}
 
 	// 开始监听
 	listener, err := net.Listen("tcp", g.conf.Bind)
 	if err != nil {
+		logger.Error("grpc 监听端口失败", zap.String("serverName", g.serverName), zap.Error(err))
 		return err
 	}
 
-	unRegistry := false
+	isRegistry := int32(1)
 	handler.AddHandler(handler.AfterStartHandler, func(app core.IApp, handlerType handler.HandlerType) {
-		if unRegistry {
+		if atomic.LoadInt32(&isRegistry) != 1 {
 			return
 		}
 
@@ -121,34 +115,32 @@ func (g *GRpcServer) Start() error {
 			addr.Name = addr.Endpoint
 		}
 
-		for _, desc := range g.serviceDesc {
-			err = r.Registry(g.app.BaseContext(), desc.ServiceName, addr)
-			g.app.Info("grpc服务注册", zap.String("ServiceName", desc.ServiceName), zap.Any("addr", addr))
-			if err != nil {
-				g.app.Error("grpc服务注册失败", zap.String("ServiceName", desc.ServiceName), zap.Any("addr", addr), zap.Error(err))
-				g.app.Exit()
-			}
+		err = r.Registry(g.app.BaseContext(), g.serverName, addr)
+		g.app.Info("grpc服务注册", zap.String("serverName", g.serverName), zap.Any("addr", addr))
+		if err != nil {
+			g.app.Error("grpc服务注册失败", zap.String("serverName", g.serverName), zap.Any("addr", addr), zap.Error(err))
+			g.app.Exit()
 		}
 
 		handler.AddHandler(handler.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
-			for _, desc := range g.serviceDesc {
-				r.UnRegistry(context.Background(), desc.ServiceName)
-			}
+			r.UnRegistry(context.Background(), g.serverName)
 		})
 	})
 
 	g.app.Info("正在启动grpc服务", zap.String("bind", listener.Addr().String()))
-	err = g.server.Serve(listener)
-	unRegistry = true
-	if err != nil {
-		return err
-	}
+	go func() {
+		err = g.server.Serve(listener)
+		atomic.StoreInt32(&isRegistry, 0)
+		if err != nil {
+			g.app.Fatal("启动grpc服务失败", zap.String("serverName", g.serverName), zap.Error(err))
+		}
+	}()
 	return nil
 }
 
 func (g *GRpcServer) Close() {
 	g.server.GracefulStop()
-	g.app.Warn("grpc服务已关闭")
+	g.app.Warn("grpc服务已关闭", zap.String("serverName", g.serverName))
 }
 
 // 错误拦截

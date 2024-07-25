@@ -28,7 +28,7 @@ const (
 const (
 	KeySeqIncr   = "grpc:server:seq:"    // 服务申请序号自增号
 	KeyServerReg = "grpc:server:reg:"    // 服务注册地址
-	KeyRegSignal = "grpc:server:signal:" // 注册型号通道
+	KeyRegSignal = "grpc:server:signal:" // 注册信号通道
 )
 
 func init() {

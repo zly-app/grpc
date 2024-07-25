@@ -5,7 +5,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/filter"
 
 	"github.com/zly-app/grpc/pkg"
@@ -19,8 +18,8 @@ type filterRsp struct {
 }
 
 // 接入app filter
-func AppFilter(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	ctx, chain := filter.GetServiceFilter(ctx, string(DefaultServiceType), info.FullMethod)
+func (g *GRpcServer) AppFilter(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	ctx, chain := filter.GetServiceFilter(ctx, string(DefaultServiceType)+"."+g.serverName, info.FullMethod)
 	meta := filter.GetCallMeta(ctx)
 	meta.AddCallersSkip(3)
 
@@ -31,7 +30,7 @@ func AppFilter(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo,
 	ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{
 		CallerService: callMeta.CallerService,
 		CallerMethod:  callMeta.CallerMethod,
-		CalleeService: string(DefaultServiceType) + "/" + zapp.App().Name(),
+		CalleeService: string(DefaultServiceType) + "/" + g.serverName,
 		CalleeMethod:  info.FullMethod,
 	})
 
