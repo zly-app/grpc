@@ -24,8 +24,8 @@ const (
 	// 是否对请求数据校验所有字段
 	defReqDataValidateAllField = false
 
-	defRegistryType = static.Type
-	defWeight       = 100
+	defRegistryAddress = static.Type
+	defWeight          = 100
 )
 
 // grpc服务配置
@@ -38,11 +38,10 @@ type ServerConfig struct {
 	TLSCertFile                   string // tls公钥文件路径
 	TLSKeyFile                    string // tls私钥文件路径
 
-	RegistryName   string // 注册器名称
-	RegistryType   string // 注册器类型, 支持 static, redis
-	PublishName    string // 公告名, 在注册中心中定义的名称, 如果为空则自动设为 PublishAddress
-	PublishAddress string // 公告地址, 在注册中心中定义的地址, 客户端会根据这个地址连接服务端, 如果为空则自动设为 实例ip:BindPort
-	PublishWeight  uint16 // 公告权重, 默认100
+	RegistryAddress string // 注册地址, 默认 static, 参考 https://github.com/zly-app/grpc/tree/master/registry
+	PublishName     string // 公告名, 在注册中心中定义的名称, 如果为空则自动设为 PublishAddress
+	PublishAddress  string // 公告地址, 在注册中心中定义的地址, 客户端会根据这个地址连接服务端, 如果为空则自动设为 实例ip:BindPort
+	PublishWeight   uint16 // 公告权重, 默认100
 }
 
 func NewServerConfig() *ServerConfig {
@@ -61,8 +60,8 @@ func (conf *ServerConfig) Check() error {
 		conf.HeartbeatTime = defMinHeartbeatTime
 	}
 
-	if conf.RegistryType == "" {
-		conf.RegistryType = defRegistryType
+	if conf.RegistryAddress == "" {
+		conf.RegistryAddress = defRegistryAddress
 	}
 	if conf.PublishWeight == 0 {
 		conf.PublishWeight = defWeight

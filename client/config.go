@@ -2,14 +2,11 @@ package client
 
 import (
 	"github.com/zly-app/grpc/balance"
-	"github.com/zly-app/grpc/registry/static"
 )
 
 const (
-	// 连接地址
+	// 服务地址
 	defAddress = "localhost:3000"
-	// 发现器类型
-	defDiscoverType = static.Type
 	// 均衡器
 	defBalance = balance.WeightConsistentHash
 
@@ -41,8 +38,7 @@ const (
 
 // grpc客户端配置
 type ClientConfig struct {
-	Address           string // 链接地址/发现器名称
-	DiscoverType      string // 发现器类型, 支持 static, redis
+	Address           string // 服务地址, 参考 https://github.com/zly-app/grpc/tree/master/discover
 	Balance           string // 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
 
 	WaitFirstConn     bool // 初始化时等待第一个链接
@@ -76,9 +72,6 @@ func NewClientConfig() *ClientConfig {
 func (conf *ClientConfig) Check() error {
 	if conf.Address == "" {
 		conf.Address = defAddress
-	}
-	if conf.DiscoverType == "" {
-		conf.DiscoverType = defDiscoverType
 	}
 	if conf.Balance == "" {
 		conf.Balance = defBalance

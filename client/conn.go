@@ -102,20 +102,33 @@ func (g *GRpcClient) getConn(ctx context.Context) (*grpc.ClientConn, error) {
 	return v, nil
 }
 
+func (g *GRpcClient) parseAddress(address string) (string, string) {
+	k := strings.Index(address, "://")
+	if k == -1 {
+		return static.Type, address
+	}
+	return address[:k], address[k+3:]
+}
+
 func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, error) {
 	if err := conf.Check(); err != nil {
 		return nil, fmt.Errorf("GRpcClient配置检查失败: %v", err)
 	}
 
+	g := &GRpcClient{
+		app:        app,
+		clientName: name,
+	}
+	dType, dAddr := g.parseAddress(conf.Address)
 	var creator connpool.Creator = func(ctx context.Context) (interface{}, error) {
 		// 获取发现器
-		r, err := discover.GetDiscover(app, strings.ToLower(conf.DiscoverType), conf.Address)
+		r, err := discover.GetDiscover(app, strings.ToLower(dType), dAddr)
 		if err != nil {
 			return nil, fmt.Errorf("获取发现器失败: %v", err)
 		}
 		// 静态发现器特殊逻辑
-		if strings.ToLower(conf.DiscoverType) == static.Type {
-			ss := strings.Split(conf.Address, ",")
+		if strings.ToLower(dType) == static.Type {
+			ss := strings.Split(dAddr, ",")
 			for _, s := range ss {
 				addrInfo, err := pkg.ParseAddr(s)
 				if err != nil {
@@ -141,7 +154,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 		}
 
 		// 目标
-		target := fmt.Sprintf("%s://%s/%s", conf.DiscoverType, "", name)
+		target := fmt.Sprintf("%s://%s/%s", dType, "", name)
 
 		// 代理
 		var ss5 utils.ISocks5Proxy
@@ -180,12 +193,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 	if err != nil {
 		return nil, fmt.Errorf("GRpcClient连接池创建失败: %v", err)
 	}
-
-	g := &GRpcClient{
-		app:        app,
-		pool:       pool,
-		clientName: name,
-	}
+	g.pool = pool
 	return g, nil
 }
 

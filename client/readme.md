@@ -109,9 +109,8 @@ components:
 ```yaml
 components:
    grpc:
-      hello: # 服务名 ServiceDesc.ServiceName
-         Address: localhost:3000 # 链接地址/注册器地址
-         DiscoverType: static # 发现器类型, 支持 static, redis
+      hello: # 服务名
+         Address: localhost:3000 # 服务地址, 参考 https://github.com/zly-app/grpc/tree/master/discover
          Balance: weight_consistent_hash # 均衡器, 支持 round_robin, weight_random, weight_hash, weight_consistent_hash
          WaitFirstConn: true # 初始化时等待第一个链接
          MinIdle: 2 # 最小闲置

@@ -23,6 +23,7 @@ import (
 	"github.com/zly-app/grpc/pkg"
 	"github.com/zly-app/grpc/registry"
 	_ "github.com/zly-app/grpc/registry/redis"
+	"github.com/zly-app/grpc/registry/static"
 	_ "github.com/zly-app/grpc/registry/static"
 )
 
@@ -82,9 +83,20 @@ func (g *GRpcServer) RegisterService(serverName string, desc *grpc.ServiceDesc, 
 	g.serviceDesc = desc
 }
 
+func (g *GRpcServer) parseRegistryAddress(address string) (string, string) {
+	switch address {
+	case "", static.Type:
+		return static.Type, ""
+	}
+
+	k := strings.Index(address, "://")
+	return address[:k], address[k+3:]
+}
+
 func (g *GRpcServer) Start() error {
 	// 获取注册器
-	r, err := registry.GetRegistry(g.app, strings.ToLower(g.conf.RegistryType), g.conf.RegistryName)
+	rType, rAddr := g.parseRegistryAddress(g.conf.RegistryAddress)
+	r, err := registry.GetRegistry(g.app, strings.ToLower(rType), rAddr)
 	if err != nil {
 		logger.Error("grpc 获取注册器失败", zap.String("serverName", g.serverName), zap.Error(err))
 		return fmt.Errorf("获取注册器失败: %v", err)

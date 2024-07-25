@@ -173,8 +173,7 @@ services:
          TLSCertFile: '' # tls公钥文件路径
          TLSKeyFile: '' # tls私钥文件路径
 
-         RegistryName: '' # 注册器名称
-         RegistryType: 'static' # 注册器类型, 支持 static, redis
+         RegistryAddress: 'static' # 注册地址, 默认 static, 参考 https://github.com/zly-app/grpc/tree/master/registry
          PublishName: '' # 公告名, 在注册中心中定义的名称, 如果为空则自动设为 PublishAddress
          PublishAddress: '' # 公告地址, 在注册中心中定义的地址, 客户端会根据这个地址连接服务端, 如果为空则自动设为 实例ip:BindPort
          PublishWeight: 100 # 公告权重, 默认100
@@ -453,6 +452,9 @@ services:
    grpc-gateway:
       Bind: :8080 # bind地址
       CloseWait: 3 # 关闭前等待处理时间, 单位秒
+      CorsAllowAll: true # 允许全局跨域
+
+      Route: # 路由配置
 ```
 
 生成 `swagger`
