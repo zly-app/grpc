@@ -36,9 +36,8 @@ func init() {
 }
 
 type RedisRegistry struct {
-	creator redis.IRedisCreator
-	client  redis.UniversalClient
-	t       *time.Ticker
+	client redis.UniversalClient
+	t      *time.Ticker
 
 	servers map[string]*RegServer
 	mx      sync.Mutex
@@ -87,8 +86,8 @@ func (s *RedisRegistry) Registry(ctx context.Context, serverName string, addr *p
 		return err
 	}
 	name := fmt.Sprintf("%s.%d", serverName, seqNo)
-	if addr.Name != ""{
-		name =  fmt.Sprintf("%s.%d", addr.Name, seqNo)
+	if addr.Name != "" {
+		name = fmt.Sprintf("%s.%d", addr.Name, seqNo)
 	}
 	reg := &RegServer{
 		SeqNo:    int(seqNo),
@@ -164,7 +163,6 @@ func (s *RedisRegistry) UnRegistry(ctx context.Context, serverName string) {
 }
 
 func (s *RedisRegistry) Close() {
-	s.creator.Close()
 	if s.t != nil {
 		s.t.Stop()
 	}
@@ -217,10 +215,8 @@ func (s *RedisRegistry) registryAll() {
 }
 
 func NewRegistry(app core.IApp, address string) (registry.Registry, error) {
-	creator := redis.NewRedisCreator(app)
-	client := creator.GetRedis(address)
+	client := redis.GetClient(address)
 	rr := &RedisRegistry{
-		creator: creator,
 		client:  client,
 		servers: make(map[string]*RegServer),
 	}

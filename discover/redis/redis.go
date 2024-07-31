@@ -35,9 +35,8 @@ func init() {
 }
 
 type RedisDiscover struct {
-	creator redis.IRedisCreator
-	client  redis.UniversalClient
-	sub     *rredis.PubSub
+	client redis.UniversalClient
+	sub    *rredis.PubSub
 
 	t   *time.Ticker
 	res map[string]*RegServer
@@ -152,7 +151,6 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 
 func (s *RedisDiscover) Close() {
 	_ = s.sub.Close()
-	s.creator.Close()
 	if s.t != nil {
 		s.t.Stop()
 	}
@@ -309,12 +307,10 @@ func (s *RedisDiscover) reDiscoverAll() {
 }
 
 func NewDiscover(app core.IApp, address string) (discover.Discover, error) {
-	creator := redis.NewRedisCreator(app)
-	client := creator.GetRedis(address)
+	client := redis.GetClient(address)
 	rr := &RedisDiscover{
-		creator: creator,
-		client:  client,
-		sub:     client.Subscribe(app.BaseContext()),
+		client:    client,
+		sub:       client.Subscribe(app.BaseContext()),
 
 		res: make(map[string]*RegServer),
 	}

@@ -10,7 +10,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/redis/go-redis/v9 v9.1.0
 	github.com/spf13/cast v1.3.1
-	github.com/zly-app/component/redis v0.0.0-20231026093728-9994f4b941d3
+	github.com/zly-app/component/redis v0.0.0-20240730111157-8bb3372a7bfe
 	github.com/zly-app/zapp v1.3.17
 	github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97
 	github.com/zlyuancn/zbalancer v1.1.0

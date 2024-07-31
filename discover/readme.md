@@ -38,6 +38,10 @@ components:
   grpc:
     hello:
       Address: 'redis://default'
+
+  redis:
+    default:
+     # ... 参考 https://github.com/zly-app/component/tree/master/redis
 ```
 
 说明
