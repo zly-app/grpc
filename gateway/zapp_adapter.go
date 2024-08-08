@@ -16,11 +16,14 @@ import (
 // 默认服务类型
 const DefaultServiceType core.ServiceType = "grpc-gateway"
 
-// 启用grpc网关服务
-func WithService() zapp.Option {
+func init() {
 	service.RegisterCreatorFunc(DefaultServiceType, func(app core.IApp) core.IService {
 		return newServiceAdapter(app)
 	})
+}
+
+// 启用grpc网关服务
+func WithService() zapp.Option {
 	return zapp.WithService(DefaultServiceType)
 }
 
