@@ -264,7 +264,7 @@ win PowerShell
 ```shell
 protoc `
 -I . `
--I $ehv:GOPATH/protos/zly-app/grpc/protos `
+-I $env:GOPATH/protos/zly-app/grpc/protos `
 --go_out . --go_opt paths=source_relative `
 --validate_out "lang=go:." --validate_opt paths=source_relative `
 pb/a.proto
