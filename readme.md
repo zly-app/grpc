@@ -174,7 +174,7 @@ services:
          TLSKeyFile: '' # tls私钥文件路径
 
          RegistryAddress: 'static' # 注册地址, 默认 static, 参考 https://github.com/zly-app/grpc/tree/master/registry
-         PublishName: '' # 公告名, 在注册中心中定义的名称, 如果为空则自动设为 PublishAddress
+         PublishName: '' # 公告名, 在注册中心中定义的名称, 如果为空则自动设为当前grpc服务名
          PublishAddress: '' # 公告地址, 在注册中心中定义的地址, 客户端会根据这个地址连接服务端, 如果为空则自动设为 实例ip:BindPort
          PublishWeight: 100 # 公告权重, 默认100
 ```
