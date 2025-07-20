@@ -526,5 +526,5 @@ protoc `
 --grpc-gateway_out . --grpc-gateway_opt paths=source_relative `
 --validate_out "lang=go:." --validate_opt paths=source_relative `
 --openapiv2_out . `
-./doorlook.proto
+./*.proto
 ```
