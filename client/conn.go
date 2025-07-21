@@ -166,7 +166,7 @@ func NewGRpcConn(app core.IApp, name string, conf *ClientConfig) (IGrpcConn, err
 			ss5 = a
 		}
 
-		v, err := makeConn(ctx, app, reg, balancer, target, ss5, conf)
+		v, err := makeConn(ctx, app, name, reg, balancer, target, ss5, conf)
 		if err != nil {
 			app.Warn(ctx, "创建conn失败", zap.String("target", target), zap.Error(err))
 		}
@@ -219,7 +219,7 @@ func makePool(conf *ClientConfig, creator connpool.Creator, connClose connpool.C
 	return connpool.NewConnectPool(poolConf)
 }
 
-func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOption, target string,
+func makeConn(ctx context.Context, app core.IApp, name string, registry, balancer grpc.DialOption, target string,
 	ss5 utils.ISocks5Proxy, conf *ClientConfig) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		registry,
@@ -243,6 +243,9 @@ func makeConn(ctx context.Context, app core.IApp, registry, balancer grpc.DialOp
 		}))
 	}
 
+	opts = append(opts,
+		grpc.WithChainUnaryInterceptor(getClientHook(name)), // 请求拦截
+	)
 	conn, err := grpc.DialContext(ctx, target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("grpc客户端连接失败: %v", err)
