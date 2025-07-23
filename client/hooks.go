@@ -24,8 +24,11 @@ func RegistryAllClientHook(hooks ...ClientHook) {
 }
 
 func getClientHook(serverName string) grpc.UnaryClientInterceptor {
-	hooks := clientHooks[serverName]
-	return grpc_middleware.ChainUnaryClient(hooks...)
+	hooks, ok := clientHooks[serverName]
+	if ok {
+		return grpc_middleware.ChainUnaryClient(hooks...)
+	}
+	return grpc_middleware.ChainUnaryClient(allClientHooks...)
 }
 
 func init() {
