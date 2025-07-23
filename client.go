@@ -26,5 +26,8 @@ var WithTarget = pkg.WithTarget
 // 指定key
 var WithHashKey = pkg.WithHashKey
 
-// 注册 client hook. 必须在 app.Run 之前
+// 给指定服务的client添加hook. 必须在 app.Run 之前
 var RegistryClientHook = client.RegistryClientHook
+
+// 给所有client添加hook. 必须在 app.Run 之前
+var RegistryAllClientHook = client.RegistryAllClientHook
