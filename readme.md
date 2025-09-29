@@ -29,7 +29,7 @@
 2. 安装 ProtoBuffer Golang 支持
 
 ```shell
-go install github.com/golang/protobuf/protoc-gen-go@latest
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 ```
 
 3. 安装 ProtoBuffer GRpc Golang 支持. [文档](https://grpc.io/docs/languages/go/quickstart/)
