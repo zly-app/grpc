@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -38,7 +39,13 @@ type GRpcClient struct {
 
 type filterReq struct {
 	Req interface{}
-	*pkg.GatewayData
+
+	Method   string      `json:"Gw-Method,omitempty"`
+	Path     string      `json:"Gw-Path,omitempty"`
+	RawQuery string      `json:"Gw-RawQuery,omitempty"`
+	RawBody  string      `json:"Gw-RawBody,omitempty"`
+	IP       string      `json:"Gw-IP,omitempty"`
+	Headers  http.Header `json:"Gw-Headers,omitempty"`
 }
 type filterRsp struct {
 	Rsp interface{}
@@ -51,7 +58,15 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 
 	ctx, _ = pkg.TraceInjectIn(ctx)
 	_, gd := pkg.GetGatewayDataByOutgoing(ctx)
-	r := &filterReq{Req: args, GatewayData: gd}
+	r := &filterReq{
+		Req:      args,
+		Method:   gd.Method,
+		Path:     gd.Path,
+		RawQuery: gd.RawQuery,
+		RawBody:  gd.RawBody,
+		IP:       gd.IP,
+		Headers:  gd.Headers,
+	}
 	sp := &filterRsp{Rsp: reply}
 	err := chain.HandleInject(ctx, r, sp, func(ctx context.Context, req, rsp interface{}) error {
 		ctx, mdOutCopy := pkg.TraceInjectOut(ctx)
