@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/zly-app/zapp/pkg/utils"
 	"google.golang.org/grpc"
 
 	"github.com/zly-app/grpc/client"
@@ -25,6 +26,14 @@ func (c *Conn) NewStream(ctx context.Context, desc *grpc.StreamDesc, method stri
 }
 
 func (c *Conn) getContext(ctx context.Context) context.Context {
+	ctx, gd := pkg.GetGatewayDataByOutgoing(ctx)
+	ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, gd.Headers)
+	ctx = c.injectHashKey(ctx, gd)
+	return ctx
+}
+
+// 注入hashKey用于路由分配
+func (c *Conn) injectHashKey(ctx context.Context, gd *pkg.GatewayData) context.Context {
 	path, ok := runtime.HTTPPathPattern(ctx)
 	if !ok {
 		return ctx
@@ -36,13 +45,11 @@ func (c *Conn) getContext(ctx context.Context) context.Context {
 	if b.HashKeyByHeader == "" {
 		return ctx
 	}
-	ctx, gd := pkg.GetGatewayDataByOutgoing(ctx)
 	hashKey := gd.Headers.Get(b.HashKeyByHeader)
 	if hashKey == "" {
 		return ctx
 	}
-	ctx = pkg.InjectHashKey(ctx, hashKey)
-	return ctx
+	return pkg.InjectHashKey(ctx, hashKey)
 }
 
 func newConn(serverName string) client.ClientConnInterface {

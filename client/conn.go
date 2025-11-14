@@ -38,7 +38,7 @@ type GRpcClient struct {
 
 type filterReq struct {
 	Req         interface{}
-	GatewayData string
+	GatewayData string `json:"GatewayData,omitempty"`
 }
 type filterRsp struct {
 	Rsp interface{}
