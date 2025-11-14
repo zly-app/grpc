@@ -37,8 +37,8 @@ type GRpcClient struct {
 }
 
 type filterReq struct {
-	Req         interface{}
-	GatewayData string `json:"GatewayData,omitempty"`
+	Req interface{}
+	*pkg.GatewayData
 }
 type filterRsp struct {
 	Rsp interface{}
@@ -50,7 +50,7 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 	meta.AddCallersSkip(1)
 
 	ctx, _ = pkg.TraceInjectIn(ctx)
-	gd, _ := pkg.GetGatewayDataByOutgoingRaw(ctx)
+	_, gd := pkg.GetGatewayDataByOutgoing(ctx)
 	r := &filterReq{Req: args, GatewayData: gd}
 	sp := &filterRsp{Rsp: reply}
 	err := chain.HandleInject(ctx, r, sp, func(ctx context.Context, req, rsp interface{}) error {
