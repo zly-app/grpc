@@ -7,7 +7,6 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v1.0.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.14.0
-	github.com/json-iterator/go v1.1.12
 	github.com/redis/go-redis/v9 v9.1.0
 	github.com/spf13/cast v1.3.1
 	github.com/zly-app/component/redis v0.0.0-20240730111157-8bb3372a7bfe
@@ -40,8 +39,6 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pelletier/go-toml v1.9.3 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect

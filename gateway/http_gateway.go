@@ -12,7 +12,9 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/filter"
 	"github.com/zly-app/zapp/handler"
+	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -59,7 +61,7 @@ func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
 		bind:         conf.Bind,
 		gwMux:        gwMux,
 		closeWaitSec: conf.CloseWait,
-		httpHandler:  httpHandler,
+		httpHandler:  reqFilter(app.Name(), httpHandler),
 	}, nil
 }
 
@@ -85,6 +87,32 @@ func allowCORS(h http.Handler) http.Handler {
 	})
 }
 
+func reqFilter(appName string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(body))
+
+		d := &pkg.GatewayData{
+			Method:   r.Method,
+			Path:     r.URL.Path,
+			RawQuery: r.URL.RawQuery,
+			RawBody:  string(body),
+			IP:       RequestExtractIP(r),
+			Headers:  r.Header,
+		}
+		ctx := pkg.SaveGatewayData(r.Context(), d)             // 存入网关数据
+		ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, d.Headers) // 根据header中的trace构造
+		r = r.WithContext(ctx)                                 // 替换req的ctx
+
+		ctx, chain := filter.GetServiceFilter(r.Context(), "gateway", d.Path)
+		_ = chain.HandleInject(ctx, d, nil, func(ctx context.Context, req, rsp interface{}) error {
+			h.ServeHTTP(w, r)
+			return nil
+		})
+	})
+}
+
 func (g *Gateway) StartGateway() error {
 	listener, err := net.Listen("tcp", g.bind)
 	if err != nil {
@@ -107,19 +135,10 @@ func (g *Gateway) StartGateway() error {
 
 // grpc元数据注解器
 func gatewayMetadataAnnotator(ctx context.Context, req *http.Request) metadata.MD {
-	body, _ := io.ReadAll(req.Body)
-	_ = req.Body.Close()
-	req.Body = io.NopCloser(bytes.NewReader(body))
-
-	d := &pkg.GatewayData{
-		Method:   req.Method,
-		Path:     req.URL.Path,
-		RawQuery: req.URL.RawQuery,
-		RawBody:  string(body),
-		IP:       RequestExtractIP(req),
-		Headers:  req.Header,
+	d := pkg.GetGatewayData(ctx)
+	if d != nil {
+		s, _ := sonic.MarshalString(d)
+		return metadata.MD{pkg.GatewayMDataKey: []string{s}}
 	}
-	s, _ := sonic.MarshalString(d)
-
-	return metadata.MD{pkg.GatewayMDataKey: []string{s}}
+	return nil
 }

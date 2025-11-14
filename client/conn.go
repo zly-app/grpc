@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/http"
 	"strings"
 	"time"
 
@@ -37,38 +36,13 @@ type GRpcClient struct {
 	clientName string
 }
 
-type filterReq struct {
-	Req interface{}
-
-	Method   string      `json:"Gw-Method,omitempty"`
-	Path     string      `json:"Gw-Path,omitempty"`
-	RawQuery string      `json:"Gw-RawQuery,omitempty"`
-	RawBody  string      `json:"Gw-RawBody,omitempty"`
-	IP       string      `json:"Gw-IP,omitempty"`
-	Headers  http.Header `json:"Gw-Headers,omitempty"`
-}
-type filterRsp struct {
-	Rsp interface{}
-}
-
 func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
 	ctx, chain := filter.GetClientFilter(ctx, string(DefaultComponentType), g.clientName, method)
 	meta := filter.GetCallMeta(ctx)
 	meta.AddCallersSkip(1)
 
 	ctx, _ = pkg.TraceInjectIn(ctx)
-	_, gd := pkg.GetGatewayDataByOutgoing(ctx)
-	r := &filterReq{
-		Req:      args,
-		Method:   gd.Method,
-		Path:     gd.Path,
-		RawQuery: gd.RawQuery,
-		RawBody:  gd.RawBody,
-		IP:       gd.IP,
-		Headers:  gd.Headers,
-	}
-	sp := &filterRsp{Rsp: reply}
-	err := chain.HandleInject(ctx, r, sp, func(ctx context.Context, req, rsp interface{}) error {
+	err := chain.HandleInject(ctx, args, reply, func(ctx context.Context, req, rsp interface{}) error {
 		ctx, mdOutCopy := pkg.TraceInjectOut(ctx)
 
 		// 将主调信息传递到下游服务
@@ -77,9 +51,6 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 			CallerService: meta.CallerService(),
 			CallerMethod:  meta.CallerMethod(),
 		})
-
-		r := req.(*filterReq)
-		sp := rsp.(*filterRsp)
 
 		ctx, opts = pkg.InjectTargetFromOpts(ctx, opts)  // 注入 target
 		ctx, opts = pkg.InjectHashKeyFromOpts(ctx, opts) // 注入 hash key
@@ -91,7 +62,7 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 		defer g.pool.Put(conn)
 
 		v := conn.GetConn().(*grpc.ClientConn)
-		err = v.Invoke(ctx, method, r.Req, sp.Rsp, opts...)
+		err = v.Invoke(ctx, method, req, rsp, opts...)
 
 		pkg.TraceInjectGrpcHeader(ctx, opts...)
 

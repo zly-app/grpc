@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/zly-app/zapp/pkg/utils"
 	"google.golang.org/grpc"
 
 	"github.com/zly-app/grpc/client"
@@ -26,8 +25,7 @@ func (c *Conn) NewStream(ctx context.Context, desc *grpc.StreamDesc, method stri
 }
 
 func (c *Conn) getContext(ctx context.Context) context.Context {
-	ctx, gd := pkg.GetGatewayDataByOutgoing(ctx)
-	ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, gd.Headers)
+	gd := pkg.GetGatewayData(ctx)
 	ctx = c.injectHashKey(ctx, gd)
 	return ctx
 }

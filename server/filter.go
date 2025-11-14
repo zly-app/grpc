@@ -10,13 +10,6 @@ import (
 	"github.com/zly-app/grpc/pkg"
 )
 
-type filterReq struct {
-	Req interface{}
-}
-type filterRsp struct {
-	Rsp interface{}
-}
-
 // 接入app filter
 func (g *GRpcServer) AppFilter(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	ctx, chain := filter.GetServiceFilter(ctx, string(DefaultServiceType)+"."+g.serverName, info.FullMethod)
@@ -34,19 +27,16 @@ func (g *GRpcServer) AppFilter(ctx context.Context, req interface{}, info *grpc.
 		CalleeMethod:  info.FullMethod,
 	})
 
-	r := &filterReq{Req: req}
-	sp, err := chain.Handle(ctx, r, func(ctx context.Context, req interface{}) (rsp interface{}, err error) {
+	sp, err := chain.Handle(ctx, req, func(ctx context.Context, req interface{}) (interface{}, error) {
 		ctx, _ = pkg.TraceInjectOut(ctx)
-		r := req.(*filterReq)
-		sp, err := handler(ctx, r.Req)
+		sp, err := handler(ctx, req)
 		if err != nil {
 			return nil, err
 		}
-		return &filterRsp{Rsp: sp}, nil
+		return sp, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	rsp := sp.(*filterRsp)
-	return rsp.Rsp, nil
+	return sp, nil
 }

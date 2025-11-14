@@ -39,23 +39,15 @@ func GetGatewayDataByIncoming(ctx context.Context) *GatewayData {
 	return ret
 }
 
-func GetGatewayDataByOutgoing(ctx context.Context) (context.Context, *GatewayData) {
-	ret := &GatewayData{}
-	mdIn, _ := metadata.FromOutgoingContext(ctx)
-	s, _ := mdIn[GatewayMDataKey]
-	if len(s) > 0 {
-		_ = sonic.UnmarshalString(s[0], ret)
-	}
-
-	ctx = context.WithValue(ctx, gatewayDataKey{}, ret)
-	return ctx, ret
+func SaveGatewayData(ctx context.Context, data *GatewayData) context.Context {
+	ctx = context.WithValue(ctx, gatewayDataKey{}, data)
+	return ctx
 }
 
-func GetGatewayDataByOutgoingRaw(ctx context.Context) (string, bool) {
-	mdIn, _ := metadata.FromOutgoingContext(ctx)
-	s, _ := mdIn[GatewayMDataKey]
-	if len(s) > 0 {
-		return s[0], true
+func GetGatewayData(ctx context.Context) *GatewayData {
+	tmp := ctx.Value(gatewayDataKey{})
+	if gd, ok := tmp.(*GatewayData); ok {
+		return gd
 	}
-	return "", false
+	return nil
 }
