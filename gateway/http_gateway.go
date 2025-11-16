@@ -11,13 +11,14 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/filter"
 	"github.com/zly-app/zapp/handler"
 	"github.com/zly-app/zapp/pkg/utils"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zly-app/grpc/pkg"
 )
@@ -103,10 +104,22 @@ func reqFilter(appName string, h http.Handler) http.Handler {
 		}
 		ctx := pkg.SaveGatewayData(r.Context(), d)             // 存入网关数据
 		ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, d.Headers) // 根据header中的trace构造
-		r = r.WithContext(ctx)                                 // 替换req的ctx
+		// 从headers中获取主调信息
+		callMeta := filter.GetCallerMetaByHeader(r.Header)
+		ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{
+			CallerInstance: callMeta.CallerInstance,
+			CallerEnv:      callMeta.CallerEnv,
+			CallerService:  callMeta.CallerService,
+			CallerMethod:   callMeta.CallerMethod,
+			CalleeService:  string(DefaultServiceType) + "/" + d.Path,
+			CalleeMethod:   d.Method,
+		})
+		ctx, chain := filter.GetServiceFilter(ctx, string(DefaultServiceType), d.Path)
 
-		ctx, chain := filter.GetServiceFilter(r.Context(), "gateway", d.Path)
+		r = r.WithContext(ctx) // 替换req的ctx
 		_ = chain.HandleInject(ctx, d, nil, func(ctx context.Context, req, rsp interface{}) error {
+			ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{}) // 将上游携带的主调信息置空
+			r = r.WithContext(ctx)
 			h.ServeHTTP(w, r)
 			return nil
 		})

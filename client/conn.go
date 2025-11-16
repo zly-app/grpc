@@ -7,15 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zly-app/zapp/core"
-	"github.com/zly-app/zapp/filter"
-	"github.com/zly-app/zapp/pkg/utils"
 	"github.com/zlyuancn/connpool"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/filter"
+	"github.com/zly-app/zapp/pkg/utils"
 
 	"github.com/zly-app/grpc/balance"
 	"github.com/zly-app/grpc/discover"
@@ -48,8 +49,10 @@ func (g *GRpcClient) Invoke(ctx context.Context, method string, args interface{}
 		// 将主调信息传递到下游服务
 		meta := filter.GetCallMeta(ctx)
 		ctx = pkg.InjectCallerMetaToMD(ctx, mdOutCopy, filter.CallerMeta{
-			CallerService: meta.CallerService(),
-			CallerMethod:  meta.CallerMethod(),
+			CallerInstance: meta.CallerInstance(),
+			CallerEnv:      meta.CallerEnv(),
+			CallerService:  meta.CallerService(),
+			CallerMethod:   meta.CallerMethod(),
 		})
 
 		ctx, opts = pkg.InjectTargetFromOpts(ctx, opts)  // 注入 target

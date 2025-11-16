@@ -1,6 +1,8 @@
 module github.com/zly-app/grpc
 
-go 1.19
+go 1.23
+
+toolchain go1.24.1
 
 require (
 	github.com/bytedance/sonic v1.14.1
@@ -10,7 +12,7 @@ require (
 	github.com/redis/go-redis/v9 v9.1.0
 	github.com/spf13/cast v1.3.1
 	github.com/zly-app/component/redis v0.0.0-20240730111157-8bb3372a7bfe
-	github.com/zly-app/zapp v1.3.17
+	github.com/zly-app/zapp v1.3.25
 	github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97
 	github.com/zlyuancn/zbalancer v1.1.0
 	go.opentelemetry.io/otel v1.16.0
@@ -35,6 +37,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/kardianos/service v1.2.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
@@ -51,7 +54,6 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.8.1 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
-	github.com/takama/daemon v1.0.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
@@ -65,7 +67,7 @@ require (
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/net v0.26.0 // indirect
 	golang.org/x/sys v0.22.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/ini.v1 v1.62.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

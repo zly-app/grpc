@@ -21,14 +21,17 @@ func (g *GRpcServer) AppFilter(ctx context.Context, req interface{}, info *grpc.
 	// 获取上游的主调信息并写入, 修改被调信息
 	callMeta, _ := pkg.ExtractCallerMetaFromMD(mdIn)
 	ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{
-		CallerService: callMeta.CallerService,
-		CallerMethod:  callMeta.CallerMethod,
-		CalleeService: string(DefaultServiceType) + "/" + g.serverName,
-		CalleeMethod:  info.FullMethod,
+		CallerInstance: callMeta.CallerInstance,
+		CallerEnv:      callMeta.CallerEnv,
+		CallerService:  callMeta.CallerService,
+		CallerMethod:   callMeta.CallerMethod,
+		CalleeService:  string(DefaultServiceType) + "/" + g.serverName,
+		CalleeMethod:   info.FullMethod,
 	})
 
 	sp, err := chain.Handle(ctx, req, func(ctx context.Context, req interface{}) (interface{}, error) {
 		ctx, _ = pkg.TraceInjectOut(ctx)
+		ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{}) // 将上游携带的主调信息置空
 		sp, err := handler(ctx, req)
 		if err != nil {
 			return nil, err
