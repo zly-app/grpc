@@ -11,14 +11,13 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/encoding/protojson"
-
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/filter"
 	"github.com/zly-app/zapp/handler"
 	"github.com/zly-app/zapp/pkg/utils"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zly-app/grpc/pkg"
 )
@@ -37,21 +36,20 @@ func NewGateway(app core.IApp, conf *ServerConfig) (*Gateway, error) {
 	}
 
 	var mar runtime.Marshaler = &runtime.HTTPBodyMarshaler{
-		Marshaler: &Marshaler{
-			Marshaler: &runtime.JSONPb{
-				MarshalOptions: protojson.MarshalOptions{
-					EmitUnpopulated: true,
-					UseProtoNames:   true,
-				},
-				UnmarshalOptions: protojson.UnmarshalOptions{
-					DiscardUnknown: true,
-				},
+		Marshaler: &runtime.JSONPb{
+			MarshalOptions: protojson.MarshalOptions{
+				EmitUnpopulated: true,
+				UseProtoNames:   true,
+			},
+			UnmarshalOptions: protojson.UnmarshalOptions{
+				DiscardUnknown: true,
 			},
 		},
 	}
 	gwMux := runtime.NewServeMux(
 		runtime.WithMetadata(gatewayMetadataAnnotator),
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, mar),
+		runtime.WithForwardResponseRewriter(ForwardResponseRewriter),
 	)
 	var httpHandler http.Handler = gwMux
 	if conf.CorsAllowAll {

@@ -1,46 +1,25 @@
 package gateway
 
 import (
-	"io"
+	"context"
 
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/zly-app/zapp/pkg/utils"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
-type Marshaler struct {
-	runtime.Marshaler
-}
 type Response struct {
-	Code    int32       `json:"code"`
-	Message string      `json:"message"`
+	Code    int32       `json:"code,omitempty"`
+	Message string      `json:"message,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
+	TraceId string      `json:"trace_id,omitempty"`
 }
 
-func (m *Marshaler) Marshal(v interface{}) ([]byte, error) {
-	rsp := WrapResponse(v)
-	return m.Marshaler.Marshal(rsp)
-}
-func (m *Marshaler) NewEncoder(w io.Writer) runtime.Encoder {
-	e := m.Marshaler.NewEncoder(w)
-	return &Encoder{Encoder: e}
-}
-
-type Encoder struct {
-	runtime.Encoder
-}
-
-func (e *Encoder) Encode(v interface{}) error {
-	rsp := WrapResponse(v)
-	return e.Encoder.Encode(rsp)
-}
-
-func WrapResponse(v interface{}) interface{} {
-	if s, ok := v.(*spb.Status); ok {
-		return &Response{
-			Code:    s.Code,
-			Message: s.Message,
-		}
+func ForwardResponseRewriter(ctx context.Context, response proto.Message) (any, error) {
+	traceId, _ := utils.Otel.GetOTELTraceID(ctx)
+	s, ok := response.(*spb.Status)
+	if ok {
+		return &Response{Code: s.GetCode(), Message: s.GetMessage(), TraceId: traceId}, nil
 	}
-	rsp := &Response{Data: v}
-	return rsp
+	return &Response{Data: response, TraceId: traceId}, nil
 }
