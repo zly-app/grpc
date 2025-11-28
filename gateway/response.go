@@ -9,9 +9,9 @@ import (
 )
 
 type Response struct {
-	Code    int32       `json:"code,omitempty"`
+	Code    int32       `json:"code"`
 	Message string      `json:"message,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
+	Data    interface{} `json:"data"`
 	TraceId string      `json:"trace_id,omitempty"`
 }
 
