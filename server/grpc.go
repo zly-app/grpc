@@ -10,6 +10,7 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/filter"
 	"github.com/zly-app/zapp/handler"
 	"github.com/zly-app/zapp/logger"
 	"go.uber.org/zap"
@@ -47,8 +48,8 @@ func NewGRpcServer(app core.IApp, conf *ServerConfig, hooks ...ServerHook) (*GRp
 		conf: conf,
 	}
 	chainUnaryClientList := []grpc.UnaryServerInterceptor{
-		g.AppFilter,
 		ReturnErrorInterceptor(app, conf), // 返回错误拦截
+		g.AppFilter,
 	}
 	if conf.ReqDataValidate && !conf.ReqDataValidateAllField {
 		chainUnaryClientList = append(chainUnaryClientList, UnaryServerReqDataValidateInterceptor)
@@ -160,8 +161,28 @@ func ReturnErrorInterceptor(app core.IApp, conf *ServerConfig) grpc.UnaryServerI
 	interceptorUnknownErr := !app.GetConfig().Config().Frame.Debug && !conf.SendDetailedErrorInProduction // 是否拦截未定义的错误
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		reply, err := handler(ctx, req)
-		if interceptorUnknownErr && err != nil && status.Code(err) == codes.Unknown { // 拦截未定义错误
+		if err == nil {
+			return reply, err
+		}
+
+		code, codeType, err := filter.DefaultGetErrCodeFunc(ctx, reply, err)
+		if interceptorUnknownErr && err != nil && code == int(codes.Unknown) { // 拦截未定义错误
 			return reply, status.Error(codes.Internal, "service internal error")
+		}
+
+		if _, ok := err.(interface {
+			GRPCStatus() *status.Status
+		}); ok {
+			return nil, err
+		}
+
+		switch codeType {
+		case filter.CodeTypeTimeoutOrCancel:
+			return nil, status.New(codes.DeadlineExceeded, err.Error()).Err()
+		case filter.CodeTypeFail:
+			return nil, status.New(codes.Internal, err.Error()).Err()
+		case filter.CodeTypeException:
+			return nil, status.New(codes.Aborted, err.Error()).Err()
 		}
 		return reply, err
 	}

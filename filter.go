@@ -16,12 +16,26 @@ func init() {
 				GRPCStatus() *status.Status
 			}); ok {
 				code := se.GRPCStatus().Code()
-				if code == codes.OK {
+				switch code {
+				case codes.OK:
 					return 0, filter.CodeTypeSuccess, nil
+				case codes.DeadlineExceeded:
+					return int(code), filter.CodeTypeTimeoutOrCancel, err
+				case codes.Aborted:
+					return int(code), filter.CodeTypeException, err
 				}
 				return int(code), filter.CodeTypeFail, err
 			}
 		}
-		return old(ctx, rsp, err)
+		code, codeType, err := old(ctx, rsp, err)
+		switch codeType {
+		case filter.CodeTypeTimeoutOrCancel:
+			return int(codes.DeadlineExceeded), codeType, err
+		case filter.CodeTypeFail:
+			return int(codes.Internal), codeType, err
+		case filter.CodeTypeException:
+			return int(codes.Aborted), codeType, err
+		}
+		return code, codeType, err
 	}
 }
