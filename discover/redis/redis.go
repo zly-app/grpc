@@ -11,7 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/zly-app/component/redis"
 	"github.com/zly-app/zapp/core"
-	"github.com/zly-app/zapp/logger"
+	"github.com/zly-app/zapp/log"
 	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/resolver"
@@ -135,7 +135,7 @@ func (s *RedisDiscover) GetBuilder(ctx context.Context, serverName string) (reso
 	signalKey := redis_registry.GenRegSignalKey(serverName)
 	err = s.sub.Subscribe(ctx, signalKey)
 	if err != nil {
-		logger.Log.Error(ctx, "Discover grpc server subscribe err",
+		log.Error(ctx, "Discover grpc server subscribe err",
 			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Error(err),
@@ -196,7 +196,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 	key := redis_registry.GenRegKey(serverName)
 	data, err := s.client.HGetAll(ctx, key).Result()
 	if err != nil {
-		logger.Log.Error(ctx, "Discover grpc server err",
+		log.Error(ctx, "Discover grpc server err",
 			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Error(err),
@@ -211,7 +211,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 		r := redis_registry.RegServer{}
 		err = sonic.UnmarshalString(regData, &r)
 		if err != nil {
-			logger.Log.Warn(ctx, "Discover grpc Unmarshal regData err",
+			log.Warn(ctx, "Discover grpc Unmarshal regData err",
 				zap.String("RegistryType", Type),
 				zap.String("serverName", serverName),
 				zap.String("regData", regData),
@@ -222,7 +222,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 		}
 		// 检查过期
 		if nowUnix-r.Deadline >= DelRegDataThanTimeOverdue {
-			logger.Log.Warn(ctx, "Discover grpc regData is time overdue",
+			log.Warn(ctx, "Discover grpc regData is time overdue",
 				zap.String("RegistryType", Type),
 				zap.String("serverName", serverName),
 				zap.String("regData", regData),
@@ -241,7 +241,7 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 	if len(delSeq) > 0 {
 		err = s.client.HDel(ctx, key, delSeq...).Err()
 		if err != nil {
-			logger.Log.Error(ctx, "Discover grpc del old regData err",
+			log.Error(ctx, "Discover grpc del old regData err",
 				zap.String("RegistryType", Type),
 				zap.String("serverName", serverName),
 				zap.Strings("delSeq", delSeq),
@@ -282,8 +282,8 @@ func (s *RedisDiscover) reDiscoverOne(ctx context.Context, serverName string, re
 }
 
 func (s *RedisDiscover) reDiscoverAll() {
-	ctx, span := utils.Otel.StartSpan(context.Background(), "ReDiscoverGrpcServer")
-	defer utils.Otel.EndSpan(span)
+	ctx, span := utils.Trace.StartSpan(context.Background(), "ReDiscoverGrpcServer")
+	defer utils.Trace.EndSpan(span)
 
 	s.mx.Lock()
 	copyRes := make(map[string]*RegServer, len(s.res))
@@ -295,7 +295,7 @@ func (s *RedisDiscover) reDiscoverAll() {
 	for serverName, reg := range copyRes {
 		err := s.reDiscoverOne(ctx, serverName, reg)
 		if err != nil {
-			logger.Log.Error(ctx, "ReDiscover grpc server err",
+			log.Error(ctx, "ReDiscover grpc server err",
 				zap.String("DiscoverType", Type),
 				zap.String("serverName", serverName),
 				zap.Any("reg", reg),
@@ -307,10 +307,14 @@ func (s *RedisDiscover) reDiscoverAll() {
 }
 
 func NewDiscover(app core.IApp, address string) (discover.Discover, error) {
-	client := redis.GetClient(address)
+	client, err := redis.GetClient(address)
+	if err != nil {
+		return nil, err
+	}
+
 	rr := &RedisDiscover{
-		client:    client,
-		sub:       client.Subscribe(app.BaseContext()),
+		client: client,
+		sub:    client.Subscribe(app.BaseContext()),
 
 		res: make(map[string]*RegServer),
 	}

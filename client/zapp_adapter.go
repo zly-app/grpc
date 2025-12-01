@@ -34,7 +34,7 @@ func (i *instance) Close() {
 
 type ClientCreatorAdapter struct {
 	app  core.IApp
-	conn *conn.Conn
+	conn *conn.AnyConn[IGrpcConn]
 }
 
 var defGrpcClientCreator IGRpcClientCreator
@@ -44,8 +44,10 @@ var defGrpcClientCreatorOnce sync.Once
 func initGRpcClientCreator() IGRpcClientCreator {
 	defGrpcClientCreatorOnce.Do(func() {
 		defGrpcClientCreator = &ClientCreatorAdapter{
-			app:  zapp.App(),
-			conn: conn.NewConn(),
+			app: zapp.App(),
+			conn: conn.NewAnyConn[IGrpcConn](func(name string, conn IGrpcConn) {
+				_ = conn.Close()
+			}),
 		}
 		zapp.AddHandler(zapp.BeforeExitHandler, func(app core.IApp, handlerType handler.HandlerType) {
 			defGrpcClientCreator.Close()
@@ -59,14 +61,14 @@ func (c *ClientCreatorAdapter) GetClientConn(serverName string) ClientConnInterf
 	if err != nil {
 		return newErrConn(err)
 	}
-	return ins.(*instance).cc
+	return ins
 }
 
 func (c *ClientCreatorAdapter) Close() {
 	c.conn.CloseAll()
 }
 
-func (c *ClientCreatorAdapter) makeClient(name string) (conn.IInstance, error) {
+func (c *ClientCreatorAdapter) makeClient(name string) (IGrpcConn, error) {
 	// 解析配置
 	conf := NewClientConfig()
 	err := c.app.GetConfig().ParseComponentConfig(DefaultComponentType, name, conf, true)
@@ -79,7 +81,7 @@ func (c *ClientCreatorAdapter) makeClient(name string) (conn.IInstance, error) {
 		return nil, fmt.Errorf("grpc客户端创建conn失败: %v", err)
 	}
 
-	return &instance{cc: cc}, nil
+	return cc, nil
 }
 
 // 获取grpc客户端conn

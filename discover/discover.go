@@ -25,11 +25,13 @@ type DiscoverCreator func(app core.IApp, address string) (Discover, error)
 
 var discoverCreator = map[string]DiscoverCreator{}
 
-var discoverConn = conn.NewConn()
+var discoverConn = conn.NewAnyConn[Discover](func(name string, conn Discover) {
+	conn.Close()
+})
 
 func GetDiscover(app core.IApp, discoverType, discoverAddress string) (Discover, error) {
 	key := discoverType + "/" + discoverAddress
-	ins, err := discoverConn.GetConn(func(key string) (conn.IInstance, error) {
+	ins, err := discoverConn.GetConn(func(key string) (Discover, error) {
 		creator, ok := discoverCreator[discoverType]
 		if !ok {
 			return nil, fmt.Errorf("发现器不存在: %v", discoverType)

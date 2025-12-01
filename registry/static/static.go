@@ -25,7 +25,7 @@ type StaticRegistry struct {
 	address map[string][]*pkg.AddrInfo
 	mx      sync.RWMutex
 
-	conn *conn.Conn
+	conn *conn.AnyConn[resolver.Builder]
 }
 
 var DefStatic = newStatic()
@@ -34,7 +34,12 @@ func newStatic() *StaticRegistry {
 	s := &StaticRegistry{
 		res:     make(map[string]resolver.Builder),
 		address: make(map[string][]*pkg.AddrInfo),
-		conn:    conn.NewConn(),
+		conn: conn.NewAnyConn[resolver.Builder](func(name string, conn resolver.Builder) {
+			v, ok := conn.(*manual.Resolver)
+			if ok {
+				v.Close()
+			}
+		}),
 	}
 	return s
 }
@@ -42,7 +47,7 @@ func newStatic() *StaticRegistry {
 func (s *StaticRegistry) Close() {}
 
 func (s *StaticRegistry) GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error) {
-	ins, err := s.conn.GetConn(func(serverName string) (conn.IInstance, error) {
+	ins, err := s.conn.GetConn(func(serverName string) (resolver.Builder, error) {
 		s.mx.Lock()
 		address, ok := s.address[serverName]
 		s.mx.Unlock()
@@ -63,7 +68,7 @@ func (s *StaticRegistry) GetBuilder(ctx context.Context, serverName string) (res
 	if err != nil {
 		return nil, err
 	}
-	return ins.(resolver.Builder), nil
+	return ins, nil
 }
 
 func (s *StaticRegistry) Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error {

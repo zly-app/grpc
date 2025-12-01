@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cast"
 	"github.com/zly-app/component/redis"
 	"github.com/zly-app/zapp/core"
-	"github.com/zly-app/zapp/logger"
+	"github.com/zly-app/zapp/log"
 	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 
@@ -77,7 +77,7 @@ func (s *RedisRegistry) Registry(ctx context.Context, serverName string, addr *p
 	seqKey := GenSeqKey(serverName)
 	seqNo, err := s.client.Incr(ctx, seqKey).Result()
 	if err != nil {
-		logger.Log.Error(ctx, "Registry grpc server. apply SeqNo err",
+		log.Error(ctx, "Registry grpc server. apply SeqNo err",
 			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Any("addr", addr),
@@ -108,7 +108,7 @@ func (s *RedisRegistry) Registry(ctx context.Context, serverName string, addr *p
 	})
 	err = s.client.Publish(ctx, signalKey, signalText).Err()
 	if err != nil {
-		logger.Log.Error(ctx, "Registry grpc server. publish reg signal err",
+		log.Error(ctx, "Registry grpc server. publish reg signal err",
 			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Any("addr", reg),
@@ -139,7 +139,7 @@ func (s *RedisRegistry) UnRegistry(ctx context.Context, serverName string) {
 	})
 	err := s.client.Publish(ctx, signalKey, signalText).Err()
 	if err != nil {
-		logger.Log.Error(ctx, "Registry grpc server. publish reg signal err",
+		log.Error(ctx, "Registry grpc server. publish reg signal err",
 			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Any("addr", reg),
@@ -152,7 +152,7 @@ func (s *RedisRegistry) UnRegistry(ctx context.Context, serverName string) {
 	key, field := GenRegKey(serverName), GenRegField(reg.SeqNo)
 	err = s.client.HDel(ctx, key, field).Err()
 	if err != nil {
-		logger.Log.Error(ctx, "UnRegistry grpc server err",
+		log.Error(ctx, "UnRegistry grpc server err",
 			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Any("reg", reg),
@@ -182,7 +182,7 @@ func (s *RedisRegistry) registryOne(ctx context.Context, serverName string, reg 
 	data, _ := sonic.MarshalString(reg)
 	err := s.client.HSet(ctx, key, field, data).Err()
 	if err != nil {
-		logger.Log.Error(ctx, "Registry grpc server err",
+		log.Error(ctx, "Registry grpc server err",
 			zap.String("RegistryType", Type),
 			zap.String("serverName", serverName),
 			zap.Any("reg", reg),
@@ -194,8 +194,8 @@ func (s *RedisRegistry) registryOne(ctx context.Context, serverName string, reg 
 }
 
 func (s *RedisRegistry) registryAll() {
-	ctx, span := utils.Otel.StartSpan(context.Background(), "ReRegistryGrpcServer")
-	defer utils.Otel.EndSpan(span)
+	ctx, span := utils.Trace.StartSpan(context.Background(), "ReRegistryGrpcServer")
+	defer utils.Trace.EndSpan(span)
 
 	s.mx.Lock()
 	defer s.mx.Unlock()
@@ -203,7 +203,7 @@ func (s *RedisRegistry) registryAll() {
 	for serverName, reg := range s.servers {
 		err := s.registryOne(ctx, serverName, reg)
 		if err != nil {
-			logger.Log.Error(ctx, "ReRegistry grpc server err",
+			log.Error(ctx, "ReRegistry grpc server err",
 				zap.String("RegistryType", Type),
 				zap.String("serverName", serverName),
 				zap.Any("reg", reg),
@@ -215,7 +215,10 @@ func (s *RedisRegistry) registryAll() {
 }
 
 func NewRegistry(app core.IApp, address string) (registry.Registry, error) {
-	client := redis.GetClient(address)
+	client, err := redis.GetClient(address)
+	if err != nil {
+		return nil, err
+	}
 	rr := &RedisRegistry{
 		client:  client,
 		servers: make(map[string]*RegServer),

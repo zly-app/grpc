@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/zly-app/zapp"
-	"github.com/zly-app/zapp/logger"
+	"github.com/zly-app/zapp/log"
 
 	"github.com/zly-app/grpc"
 	"github.com/zly-app/grpc/example/pb/hello"
@@ -17,7 +17,7 @@ type HelloService struct {
 }
 
 func (h *HelloService) Say(ctx context.Context, req *hello.SayReq) (*hello.SayResp, error) {
-	logger.Log.Info(ctx, "收到请求", req.Msg)
+	log.Info(ctx, "收到请求", req.Msg)
 	return &hello.SayResp{Msg: req.GetMsg() + "world"}, nil
 }
 

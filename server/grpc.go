@@ -12,7 +12,7 @@ import (
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/filter"
 	"github.com/zly-app/zapp/handler"
-	"github.com/zly-app/zapp/logger"
+	"github.com/zly-app/zapp/log"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -99,14 +99,14 @@ func (g *GRpcServer) Start() error {
 	rType, rAddr := g.parseRegistryAddress(g.conf.RegistryAddress)
 	r, err := registry.GetRegistry(g.app, strings.ToLower(rType), rAddr)
 	if err != nil {
-		logger.Error("grpc 获取注册器失败", zap.String("serverName", g.serverName), zap.Error(err))
+		log.Error("grpc 获取注册器失败", zap.String("serverName", g.serverName), zap.Error(err))
 		return fmt.Errorf("获取注册器失败: %v", err)
 	}
 
 	// 开始监听
 	listener, err := net.Listen("tcp", g.conf.Bind)
 	if err != nil {
-		logger.Error("grpc 监听端口失败", zap.String("serverName", g.serverName), zap.Error(err))
+		log.Error("grpc 监听端口失败", zap.String("serverName", g.serverName), zap.Error(err))
 		return err
 	}
 

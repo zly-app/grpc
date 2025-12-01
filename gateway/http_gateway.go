@@ -100,8 +100,8 @@ func reqFilter(appName string, h http.Handler) http.Handler {
 			IP:       RequestExtractIP(r),
 			Headers:  r.Header,
 		}
-		ctx := pkg.SaveGatewayData(r.Context(), d)             // 存入网关数据
-		ctx, _ = utils.Otel.GetSpanWithHeaders(ctx, d.Headers) // 根据header中的trace构造
+		ctx := pkg.SaveGatewayData(r.Context(), d)              // 存入网关数据
+		ctx, _ = utils.Trace.GetSpanWithHeaders(ctx, d.Headers) // 根据header中的trace构造
 		// 从headers中获取主调信息
 		callMeta := filter.GetCallerMetaByHeader(r.Header)
 		ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{

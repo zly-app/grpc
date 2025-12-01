@@ -5,7 +5,7 @@ import (
 
 	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/core"
-	"github.com/zly-app/zapp/logger"
+	"github.com/zly-app/zapp/log"
 	"github.com/zly-app/zapp/service"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -39,14 +39,14 @@ type ServiceAdapter struct {
 }
 
 func (s *ServiceAdapter) Inject(a ...interface{}) {
-	logger.Fatal("grpc不支持Inject, 请使用 pb.RegisterXXXServiceServer(grpc.Server(serverName), impl)")
+	log.Fatal("grpc不支持Inject, 请使用 pb.RegisterXXXServiceServer(grpc.Server(serverName), impl)")
 }
 
 func (s *ServiceAdapter) RegisterService(serverName string, desc *grpc.ServiceDesc, impl interface{}, hooks ...ServerHook) {
 	conf := NewServerConfig()
 	err := s.app.GetConfig().ParseServiceConfig(DefaultServiceType+"."+core.ServiceType(serverName), conf, true)
 	if err != nil {
-		logger.Log.Panic("grpc服务配置错误", zap.String("serverName", serverName), zap.Error(err))
+		log.Panic("grpc服务配置错误", zap.String("serverName", serverName), zap.Error(err))
 	}
 
 	hook := s.hooks
@@ -57,7 +57,7 @@ func (s *ServiceAdapter) RegisterService(serverName string, desc *grpc.ServiceDe
 	}
 	g, err := NewGRpcServer(s.app, conf, hook...)
 	if err != nil {
-		logger.Log.Panic("创建grpc服务失败", zap.String("serverName", serverName), zap.Error(err))
+		log.Panic("创建grpc服务失败", zap.String("serverName", serverName), zap.Error(err))
 	}
 	g.RegisterService(serverName, desc, impl)
 	defService.server = append(defService.server, g)

@@ -10,6 +10,10 @@ type errConn struct {
 	err error
 }
 
+func (e errConn) Close() error {
+	return nil
+}
+
 func (e errConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
 	return e.err
 }
@@ -18,6 +22,6 @@ func (e errConn) NewStream(ctx context.Context, desc *grpc.StreamDesc, method st
 	return nil, e.err
 }
 
-func newErrConn(err error) ClientConnInterface {
+func newErrConn(err error) IGrpcConn {
 	return errConn{err}
 }

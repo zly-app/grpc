@@ -16,7 +16,7 @@ type Response struct {
 }
 
 func ForwardResponseRewriter(ctx context.Context, response proto.Message) (any, error) {
-	traceId, _ := utils.Otel.GetOTELTraceID(ctx)
+	traceId, _ := utils.Trace.GetOTELTraceID(ctx)
 	s, ok := response.(*spb.Status)
 	if ok {
 		return &Response{Code: s.GetCode(), Message: s.GetMessage(), TraceId: traceId}, nil
