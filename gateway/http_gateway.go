@@ -86,6 +86,11 @@ func allowCORS(h http.Handler) http.Handler {
 	})
 }
 
+type filterRsp struct {
+	Headers  http.Header
+	Response *Response
+}
+
 func reqFilter(appName string, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -115,11 +120,16 @@ func reqFilter(appName string, h http.Handler) http.Handler {
 		ctx, chain := filter.GetServiceFilter(ctx, string(DefaultServiceType), d.Path)
 
 		r = r.WithContext(ctx) // 替换req的ctx
-		_ = chain.HandleInject(ctx, d, nil, func(ctx context.Context, req, rsp interface{}) error {
+		_, _ = chain.Handle(ctx, d, func(ctx context.Context, req interface{}) (interface{}, error) {
 			ctx = filter.SaveCallerMeta(ctx, filter.CallerMeta{}) // 将上游携带的主调信息置空
+			ctx = initResponseStorage(ctx)                        // 用于储存response
 			r = r.WithContext(ctx)
 			h.ServeHTTP(w, r)
-			return nil
+			sp := &filterRsp{
+				Headers:  w.Header(),
+				Response: getResponse(ctx), // 读取response
+			}
+			return sp, nil
 		})
 	})
 }
