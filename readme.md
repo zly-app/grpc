@@ -465,7 +465,7 @@ linux
 protoc \
 -I . \
 -I ${GOPATH}/protos/zly-app/grpc/protos \
---openapiv2_out . \
+--openapiv2_out=enums_as_ints=true:. \
 --go_out . --go_opt paths=source_relative \
 pb/hello/hello.proto
 ```
@@ -476,7 +476,7 @@ win cmd
 protoc ^
 -I . ^
 -I %GOPATH%/protos/zly-app/grpc/protos ^
---openapiv2_out . ^
+--openapiv2_out=enums_as_ints=true:. ^
 --go_out . --go_opt paths=source_relative ^
 pb/hello/hello.proto
 ```
@@ -487,7 +487,7 @@ win PowerShell
 protoc `
 -I . `
 -I $env:GOPATH/protos/zly-app/grpc/protos `
---openapiv2_out . `
+--openapiv2_out=enums_as_ints=true:. `
 --go_out . --go_opt paths=source_relative `
 pb/hello/hello.proto
 ```
