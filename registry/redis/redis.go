@@ -9,6 +9,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/spf13/cast"
 	"github.com/zly-app/component/redis"
+	"github.com/zly-app/zapp/component/gpool"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/log"
 	"github.com/zly-app/zapp/pkg/utils"
@@ -200,17 +201,21 @@ func (s *RedisRegistry) registryAll() {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
-	for serverName, reg := range s.servers {
-		err := s.registryOne(ctx, serverName, reg)
-		if err != nil {
-			log.Error(ctx, "ReRegistry grpc server err",
-				zap.String("RegistryType", Type),
-				zap.String("serverName", serverName),
-				zap.Any("reg", reg),
-				zap.Error(err),
-			)
-			return
-		}
+	for k, v := range s.servers {
+		serverName, reg := k, v
+		gpool.GetDefGPool().Go(func() error {
+			return s.registryOne(ctx, serverName, reg)
+		}, func(err error) {
+			if err != nil {
+				log.Error(ctx, "ReRegistry grpc server err",
+					zap.String("RegistryType", Type),
+					zap.String("serverName", serverName),
+					zap.Any("reg", reg),
+					zap.Error(err),
+				)
+				return
+			}
+		})
 	}
 }
 
