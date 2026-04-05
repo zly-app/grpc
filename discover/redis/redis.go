@@ -96,7 +96,7 @@ func (r *RegServer) TryUpdate(regData []*redis_registry.RegServer) {
 
 	// 对比
 	for i := range regData {
-		if regData[i].SeqNo != regData[i].SeqNo {
+		if regData[i].SeqNo != r.regData[i].SeqNo {
 			r.update(regData)
 			return
 		}
