@@ -27,8 +27,8 @@ import (
 const Type = "redis"
 
 const (
-	DelRegDataThanTimeOverdue = 3600 // 如果旧数据已经过期了则删除, 单位秒
-	ReDiscoverInterval        = 30   // 主动重新发现间隔时间, 单位秒
+	DelRegDataThanTimeOverdue = 300 // 如果旧数据已经过期了则删除, 单位秒
+	ReDiscoverInterval        = 30  // 主动重新发现间隔时间, 单位秒
 )
 
 func init() {
@@ -222,13 +222,16 @@ func (s *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 			continue
 		}
 		// 检查过期
-		if nowUnix-r.Deadline >= DelRegDataThanTimeOverdue {
-			log.Warn(ctx, "Discover grpc regData is time overdue",
-				zap.String("RegistryType", Type),
-				zap.String("serverName", serverName),
-				zap.String("regData", regData),
-			)
-			delSeq = append(delSeq, seqNo)
+		if nowUnix >= r.Deadline {
+			// 超长过期需要删除
+			if nowUnix-r.Deadline >= DelRegDataThanTimeOverdue {
+				log.Warn(ctx, "Discover grpc regData is time overdue",
+					zap.String("RegistryType", Type),
+					zap.String("serverName", serverName),
+					zap.String("regData", regData),
+				)
+				delSeq = append(delSeq, seqNo)
+			}
 			continue
 		}
 
