@@ -175,7 +175,7 @@ app.Run()
 | 函数 | 说明 |
 |------|------|
 | `grpc.WithService(hooks ...ServerHook)` | 启用 gRPC 服务 |
-| `grpc.Server(serverName string, hooks ...ServerHook)` | 获取服务注册器 |
+| `grpc.Server(serverName string, hooks ...ServerHook)` | 获取服务注册器（同一 serverName 重复调用会 panic） |
 | `grpc.ServerDesc(hooks ...ServerHook)` | 获取服务注册器 (无服务名) |
 
 **ServerHook 类型**:
@@ -370,6 +370,8 @@ message UserReq {
 - 服务启动后自动注册到注册中心
 - 服务关闭前自动取消注册
 - 支持自定义 ServerHook 拦截器
+- **同名服务复用 Server**: 同一个 `serverName` 的多个 gRPC 服务会自动复用同一个 `GRpcServer` 实例（共享监听端口和配置）。
+- **重复 serverName 会 panic**: `grpc.Server(serverName)` 对同一个 serverName 只能调用一次，重复调用会 panic。如需在同一个 server 上注册多个服务，应只调用一次 `grpc.Server()` 获取注册器，然后在同一个注册器上注册多个服务
 
 ### 10.3 客户端注意事项
 - 使用连接池管理 gRPC 连接

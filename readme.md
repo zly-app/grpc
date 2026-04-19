@@ -158,6 +158,13 @@ func main() {
    // 注册 rpc 服务
 	hello.RegisterHelloServiceServer(grpc.Server("hello"), new(HelloService))
 
+	// 同名服务复用: 同一个 serverName 的多个 gRPC 服务会自动复用同一个 GRpcServer 实例
+	// 正确做法: 只调用一次 grpc.Server() 获取注册器，然后注册多个服务
+	// registrar := grpc.Server("hello")
+	// hello.RegisterHelloServiceServer(registrar, new(HelloService))
+	// hello2.RegisterHello2ServiceServer(registrar, new(Hello2Service))
+	// 注意: 对同一个 serverName 多次调用 grpc.Server() 会 panic
+
 	app.Run()
 }
 ```
