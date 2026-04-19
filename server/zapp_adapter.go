@@ -31,11 +31,14 @@ func WithService(hooks ...ServerHook) zapp.Option {
 
 var defService = &ServiceAdapter{}
 
+var serverNameUsed = map[string]bool{}
+
 type ServiceAdapter struct {
 	app   core.IApp
 	hooks []ServerHook
 
-	server []*GRpcServer
+	server    []*GRpcServer
+	serverMap map[string]*GRpcServer // serverName -> GRpcServer，同一 serverName 复用
 }
 
 func (s *ServiceAdapter) Inject(a ...interface{}) {
@@ -43,6 +46,17 @@ func (s *ServiceAdapter) Inject(a ...interface{}) {
 }
 
 func (s *ServiceAdapter) RegisterService(serverName string, desc *grpc.ServiceDesc, impl interface{}, hooks ...ServerHook) {
+	// 初始化 serverMap
+	if s.serverMap == nil {
+		s.serverMap = make(map[string]*GRpcServer)
+	}
+
+	// 如果同名 server 已存在，直接在其上注册新服务，不再创建新的 GRpcServer
+	if g, ok := s.serverMap[serverName]; ok {
+		g.server.RegisterService(desc, impl)
+		return
+	}
+
 	conf := NewServerConfig()
 	err := s.app.GetConfig().ParseServiceConfig(DefaultServiceType+"."+core.ServiceType(serverName), conf, true)
 	if err != nil {
@@ -61,6 +75,7 @@ func (s *ServiceAdapter) RegisterService(serverName string, desc *grpc.ServiceDe
 	}
 	g.RegisterService(serverName, desc, impl)
 	defService.server = append(defService.server, g)
+	defService.serverMap[serverName] = g
 }
 
 func (s *ServiceAdapter) Start() error {
@@ -93,6 +108,10 @@ func (s serverNameCli) RegisterService(desc *grpc.ServiceDesc, impl interface{})
 }
 
 func Server(serverName string, hooks ...ServerHook) ServiceRegistrar {
+	if serverNameUsed[serverName] {
+		panic("grpc server name 重复: " + serverName)
+	}
+	serverNameUsed[serverName] = true
 	return &serverNameCli{serverName: serverName, hooks: hooks}
 }
 
