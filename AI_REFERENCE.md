@@ -381,6 +381,19 @@ message UserReq {
 ### 10.4 网关注意事项
 - 请求/响应 JSON 字段名 = proto 字段名 (与 json 标签无关)
 - 自动生成 Swagger 文档 (可选)
+- **响应结构会被自动包装**: 使用 gateway 时，proto 定义的响应结构不会直接返回给 HTTP 客户端，而是被 `ForwardResponseRewriter` 自动包装为以下结构：
+  ```json
+  {
+    "code": 0,
+    "message": "",
+    "data": { /* proto 定义的原始响应结构 */ },
+    "trace_id": "xxx"
+  }
+  ```
+  - 正常响应：`code` 为 0，`data` 包含 proto 定义的完整响应消息
+  - 错误响应：`code` 为 gRPC 状态码，`message` 包含错误信息，`data` 为空
+  - `trace_id` 为链路追踪 ID（如果存在）
+  - 此包装行为由 `gateway/response.go` 中的 `ForwardResponseRewriter` 函数实现
 
 ---
 
