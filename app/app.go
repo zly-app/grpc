@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/zly-app/component/redis"
 	"github.com/zly-app/zapp"
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/service"
@@ -97,9 +98,10 @@ func WithRequestIP(fn func(*http.Request) string) Option {
 type App struct {
 	opt *options
 
-	static    *registry.StaticTable
-	regDir    *registry.Directory
-	discDir   *discover.Directory
+	static       *registry.StaticTable
+	regDir       *registry.Directory
+	discDir      *discover.Directory
+	redisCreator redis.Creator
 	balancer  *balance.Table
 	hookTable *hooks.Table
 	decls     *serverreg.Table
@@ -238,12 +240,20 @@ func (a *App) Close() {
 		a.discDir.CloseAll()
 		a.regDir.CloseAll()
 		a.static.Close()
+		if a.redisCreator != nil {
+			a.redisCreator.Close()
+		}
 	})
 }
 
 func (a *App) attach(z core.IApp) {
 	a.attachOnce.Do(func() {
 		a.zappApp = z
+
+		// redis 客户端集合由组合根持有，注入给注册/发现目录，替换旧的包级单例。
+		a.redisCreator = redis.NewCreator(z)
+		a.regDir.SetRedisCreator(a.redisCreator)
+		a.discDir.SetRedisCreator(a.redisCreator)
 
 		gwConf := config.NewGatewayConfig()
 		if err := z.GetConfig().ParseServiceConfig(config.ServiceTypeGateway, gwConf, true); err != nil {

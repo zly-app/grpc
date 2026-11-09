@@ -95,8 +95,8 @@ func (e *serverEntry) tryUpdate(regData []*registry.RegServer) {
 }
 
 // NewRedisDiscover 建发现器并启动订阅与重发现循环。
-func NewRedisDiscover(ctx context.Context, address string) (*RedisDiscover, error) {
-	client, err := redis.GetClient(address)
+func NewRedisDiscover(ctx context.Context, address string, creator redis.Creator) (*RedisDiscover, error) {
+	client, err := creator.GetClient(address)
 	if err != nil {
 		return nil, err
 	}

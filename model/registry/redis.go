@@ -26,8 +26,8 @@ type RedisRegistry struct {
 }
 
 // NewRedisRegistry 建注册器并启动续租循环；ctx 作为后台任务的父上下文。
-func NewRedisRegistry(_ context.Context, address string) (*RedisRegistry, error) {
-	client, err := redis.GetClient(address)
+func NewRedisRegistry(_ context.Context, address string, creator redis.Creator) (*RedisRegistry, error) {
+	client, err := creator.GetClient(address)
 	if err != nil {
 		return nil, err
 	}

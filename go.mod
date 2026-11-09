@@ -7,9 +7,9 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v1.2.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3
-	github.com/redis/go-redis/v9 v9.17.1
+	github.com/redis/go-redis/v9 v9.18.0
 	github.com/spf13/cast v1.3.1
-	github.com/zly-app/component/redis v0.0.0-20251201104934-96e59c17144e
+	github.com/zly-app/component/redis v0.0.0-20261109090157-272e1bfac65e
 	github.com/zly-app/zapp v1.4.6
 	github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97
 	github.com/zlyuancn/zbalancer v1.1.0
@@ -40,8 +40,8 @@ require (
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
 	github.com/pelletier/go-toml v1.9.3 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.1 // indirect
-	github.com/redis/go-redis/extra/redisotel/v9 v9.17.1 // indirect
+	github.com/redis/go-redis/extra/rediscmd/v9 v9.18.0 // indirect
+	github.com/redis/go-redis/extra/redisotel/v9 v9.18.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.23.10 // indirect
 	github.com/smartystreets/assertions v1.1.1 // indirect
 	github.com/spf13/afero v1.10.0 // indirect
@@ -57,7 +57,7 @@ require (
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/automaxprocs v1.5.1 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.6.0 // indirect

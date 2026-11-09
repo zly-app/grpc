@@ -12,20 +12,27 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/zly-app/component/redis"
 	"github.com/zly-app/grpc/foundation/port"
 	"github.com/zly-app/grpc/model/registry"
 )
 
 // Directory 独占发现器实例池。
 type Directory struct {
-	static    port.StaticTable
-	mx        sync.Mutex
-	instances map[string]port.Discover
+	static       port.StaticTable
+	redisCreator redis.Creator
+	mx           sync.Mutex
+	instances    map[string]port.Discover
 }
 
 // NewDirectory 建发现器目录；静态地址表由组合根注入，不再反向依赖注册实现包。
 func NewDirectory(static port.StaticTable) *Directory {
 	return &Directory{static: static, instances: make(map[string]port.Discover)}
+}
+
+// SetRedisCreator 注入 redis 客户端集合（由组合根在 zapp 装配完成后调用）。
+func (d *Directory) SetRedisCreator(creator redis.Creator) {
+	d.redisCreator = creator
 }
 
 // Get 按地址规格取（或创建）一个发现器。
@@ -43,7 +50,10 @@ func (d *Directory) Get(ctx context.Context, spec registry.AddressSpec) (port.Di
 	case registry.TypeStatic:
 		v = staticDiscover{table: d.static}
 	case registry.TypeRedis:
-		rd, err := NewRedisDiscover(ctx, spec.Addr)
+		if d.redisCreator == nil {
+			return nil, fmt.Errorf("创建发现器失败: redis creator 未注入（组合根未完成装配）")
+		}
+		rd, err := NewRedisDiscover(ctx, spec.Addr, d.redisCreator)
 		if err != nil {
 			return nil, fmt.Errorf("创建发现器失败: %w", err)
 		}
