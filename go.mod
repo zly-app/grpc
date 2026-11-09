@@ -9,7 +9,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/spf13/cast v1.3.1
-	github.com/zly-app/component/redis v0.0.0-20261109090157-272e1bfac65e
+	github.com/zly-app/component/redis v0.0.0-20261109123915-2976065cf134
 	github.com/zly-app/zapp v1.4.6
 	github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97
 	github.com/zlyuancn/zbalancer v1.1.0

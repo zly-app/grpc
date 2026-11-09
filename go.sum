@@ -332,8 +332,8 @@ github.com/yusufpapurcu/wmi v1.2.3 h1:E1ctvB7uKFMOJw3fdOW32DwGE9I7t++CRUEMKvFoFi
 github.com/yusufpapurcu/wmi v1.2.3/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
 github.com/zeebo/xxh3 v1.0.2 h1:xZmwmqxHZA8AI603jOQ0tMqmBr9lPeFwGg6d+xy9DC0=
 github.com/zeebo/xxh3 v1.0.2/go.mod h1:5NWz9Sef7zIDm2JHfFlcQvNekmcEl9ekUZQQKCYaDcA=
-github.com/zly-app/component/redis v0.0.0-20261109090157-272e1bfac65e h1:J2Zg4HX3TqiwNjNtSDszdCnYqCC32SFp93BVKvXj9iQ=
-github.com/zly-app/component/redis v0.0.0-20261109090157-272e1bfac65e/go.mod h1:SuyA71mylQmCCe4UWJQP3wYY36h3OZcvpANFLs0glzY=
+github.com/zly-app/component/redis v0.0.0-20261109123915-2976065cf134 h1:J9x7zWuXiVRAv9PWrhRCTt2lG+TMyUuaOsSPnWMOT/c=
+github.com/zly-app/component/redis v0.0.0-20261109123915-2976065cf134/go.mod h1:SuyA71mylQmCCe4UWJQP3wYY36h3OZcvpANFLs0glzY=
 github.com/zly-app/zapp v1.4.6 h1:kPTiGdFdQ3zSjOhNUFb8zWAAVRRp0HeRghUI1iDpI88=
 github.com/zly-app/zapp v1.4.6/go.mod h1:AZv2BvmhlVaeXhyEg1JlVYlVL3H1sQfqQm2zuFAkvWQ=
 github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97 h1:IxkdvMgQgvkWj3kFY9CR9W4XwtFkj0fOaWJvYuwn3yw=
