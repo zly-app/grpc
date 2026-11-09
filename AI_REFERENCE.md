@@ -1,417 +1,246 @@
-# AI_REFERENCE.md - gRPC 项目快速开发参考
+# AI_REFERENCE.md · grpc 项目开发参考
 
-> 本文档用于帮助 AI 助手快速理解本 gRPC 项目架构和开发规范，无需扫描整个代码仓库
+> 本文档是 AI 助手在本仓库工作的入口，先读它再动手。架构判据见工作区 `docs/mso/AGENTS.md`（本地副本），
+> 本次改造的设计与决策见 `../../docs/plans/2026-11-09-grpc-mso-refactor-design.md` 与 `../../docs/decisions/0003-grpc-mso-refactor.md`。
 
 ---
 
 ## 1. 项目概述
 
-**模块路径**: `github.com/zly-app/grpc`
+- **module**：`github.com/zly-app/grpc`；单 module，远程在 GitHub（公开仓库）
+- **Go**：1.24.1
+- **定位**：给 [zapp](https://github.com/zly-app/zapp) 提供 gRPC 服务端、客户端、HTTP 网关、服务注册与发现
+- **架构**：模型自组织架构（MSO），2026-11-09 按五层重建，**不兼容旧版公开 API**
+- **依赖**：`google.golang.org/grpc v1.75.1`、`grpc-gateway/v2 v2.27.3`、**`zapp v1.4.6`**、`component/redis` 伪版本、`zbalancer`、`connpool`、OTel
 
-**Go 版本**: 1.24.1
-
-**核心功能**: 为 [zapp](https://github.com/zly-app/zapp) 框架提供 gRPC 服务支持，包含服务端、客户端、HTTP 网关、服务注册与发现
-
-**核心依赖**:
-- `google.golang.org/grpc v1.75.1`
-- `github.com/zly-app/zapp v1.4.1`
-- `github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3`
-- `github.com/envoyproxy/protoc-gen-validate v1.2.1`
+> **zapp 版本状态（2026-11-09 已发布）**：`go.mod` 指向 `v1.4.6`（MSO 重构后的首个 tag，指向 `8cf5a61`），**无 `replace`**。
+> 改造期间用临时 `replace` 指向本地 zapp 验证过 build/test 全绿，发布后正式回写；默认 Go 环境下
+> `scripts/verify.sh` 退出码 0。`goproxy.cn` 未收录该模块，首次取数需 `GOPROXY=direct`（或已有本地 module cache）。
+> 改造后的代码只依赖 zapp 稳定公开契约，不需要 v1.4.6 的新增 API。
 
 ---
 
-## 2. 项目结构
+## 2. 目录结构（层次即机检约束）
 
 ```
 grpc/
-├── server/          # gRPC 服务端实现
-│   ├── grpc.go      # 服务器核心逻辑、拦截器
-│   ├── hooks.go     # 服务端 Hook 拦截器
-│   ├── config.go    # 服务端配置
-│   └── zapp_adapter.go
-├── client/          # gRPC 客户端实现
-│   ├── conn.go      # 连接池管理
-│   ├── hooks.go     # 客户端 Hook 拦截器
-│   ├── config.go    # 客户端配置
-│   └── zapp_adapter.go
-├── gateway/         # HTTP 网关 (grpc-gateway)
-│   ├── http_gateway.go
-│   ├── config.go    # 网关配置
-│   └── zapp_adapter.go
-├── balance/         # 负载均衡器
-│   ├── round_robin.go
-│   ├── weight_random.go
-│   ├── weight_hash.go
-│   └── weight_consistent_hash.go
-├── registry/        # 服务注册器
-│   ├── static/      # 静态注册
-│   └── redis/       # Redis 注册
-├── discover/        # 服务发现器
-│   ├── static/      # 静态发现
-│   └── redis/       # Redis 发现
-├── pkg/             # 公共工具包
-│   ├── address.go   # 地址解析
-│   └── trace.go     # 链路追踪
-├── server.go        # 服务端入口 API
-├── client.go        # 客户端入口 API
-├── gateway.go       # 网关入口 API
-└── filter.go        # 全局过滤器
+├── foundation/                 0 底座：无业务语义
+│   ├── addr/                   地址值对象 + resolver.Address 属性编解码 + URL/端口解析
+│   ├── ctxkey/                 横切上下文：target / hashKey / gatewayData / responseSlot
+│   ├── wire/                   线缆编解码：OTel trace / CallerMeta / 自定义 metadata key
+│   ├── port/                   窄接口：Registry / Discover / StaticTable / Balancer / ServerRunner / Conn
+│   └── resolver/               gRPC Resolver 地址广播机制（带终止保障）
+├── model/                      1–2 模型层：数据 + 规则所有者，每个包文件头写契约
+│   ├── config/                 三份配置与默认值/约束规则、配置 key 常量
+│   ├── code/                   gRPC code ↔ zapp codeType 映射、错误码工具
+│   ├── balance/                均衡策略表（表驱动）+ Picker
+│   ├── registry/               注册中心 + Redis 共享协议 + 静态地址表 + 目录
+│   ├── discover/               发现器目录 + static/redis 实现
+│   ├── route/                  网关路由表
+│   ├── hooks/                  客户端 hook 表
+│   ├── connreg/                客户端连接集合
+│   └── serverreg/              服务声明表与重名规则
+├── usecase/                    3 业务层：Serve / Dial / Forward，只编排
+├── adapter/                    4 接口层：协议适配，禁止业务规则
+│   ├── grpcserver/             gRPC Server transport + 拦截器 + TLS
+│   ├── grpcclient/             gRPC ClientConn transport + 连接池
+│   └── httpgw/                 HTTP ServeMux + CORS + 请求过滤 + 响应重写
+├── app/                        5 组合根：唯一装配点（New / Options / Service 适配）
+├── grpc.go                     6 根包薄门面：只转发，无状态
+├── example/                    9 示例
+└── protos/                     proto 依赖（validate / google api 等）
 ```
+
+依赖方向由工作区 `scripts/mso/layers.conf` 的 `[grpc]` 节声明，**新包不声明层次即机检判红**。
+旧包 `server/ client/ gateway/ balance/ registry/ discover/ pkg/` 已全部删除，不要按旧路径找代码。
 
 ---
 
-## 3. 快速开始 - AI 辅助开发指南
+## 3. 快速开始
 
-### 3.1 服务端开发
+### 3.1 服务端
 
-**标准步骤**:
-
-1. **定义 proto** (`pb/hello/hello.proto`):
-```protobuf
-syntax = 'proto3';
-package hello;
-option go_package = "your-module/pb/hello";
-
-service HelloService {
-  rpc Say(SayReq) returns (SayResp);
-}
-
-message SayReq { string msg = 1; }
-message SayResp { string msg = 1; }
-```
-
-2. **编译 proto**:
-```bash
-protoc \
--I . -I ${GOPATH}/protos/zly-app/grpc/protos \
---go_out . --go_opt paths=source_relative \
---go-grpc_out . --go-grpc_opt paths=source_relative \
-pb/hello/hello.proto
-```
-
-3. **实现服务**:
 ```go
-type HelloService struct {
-    hello.UnimplementedHelloServiceServer
-}
+g := grpc.New(grpc.WithServer())                 // 唯一组合根
+app := zapp.NewApp("grpc-server", g.Options()...) // 必须把 Options() 交给 zapp
 
-func (h *HelloService) Say(ctx context.Context, req *hello.SayReq) (*hello.SayResp, error) {
-    return &hello.SayResp{Msg: req.GetMsg() + "world"}, nil
-}
-```
-
-4. **注册服务** (`main.go`):
-```go
-app := zapp.NewApp("grpc-server", grpc.WithService())
-hello.RegisterHelloServiceServer(grpc.Server("hello"), new(HelloService))
+hello.RegisterHelloServiceServer(g.Server("hello"), new(HelloService)) // 在 app.Run 之前声明
 app.Run()
 ```
 
-**关键文件**: `server/grpc.go` (NewGRpcServer), `server.go` (WithService, Server)
+### 3.2 客户端
 
-### 3.2 客户端开发
-
-**标准步骤**:
-
-1. **获取客户端连接**:
 ```go
-helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello"))
-resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
+g := grpc.New()
+app := zapp.NewApp("grpc-client", g.Options()...)
+defer app.Exit()
+
+client := hello.NewHelloServiceClient(g.ClientConn("hello"))
+resp, err := client.Say(ctx, &hello.SayReq{Msg: "hello"})
 ```
 
-2. **配置文件** (`configs/default.yaml`):
-```yaml
-components:
-  grpc:
-    hello:
-      Address: localhost:3000
-      Balance: weight_consistent_hash  # 均衡器
-      MinIdle: 2
-      MaxIdle: 4
-      MaxActive: 10
-```
+### 3.3 HTTP 网关
 
-**关键文件**: `client/conn.go` (NewGRpcConn), `client.go` (GetClientConn, WithHashKey)
-
-### 3.3 HTTP 网关开发
-
-**步骤**:
-
-1. **修改 proto 添加 HTTP 映射**:
-```protobuf
-import "google/api/annotations.proto";
-
-service HelloService {
-  rpc Say(SayReq) returns (SayResp) {
-    option (google.api.http) = {
-      post: "/hello/say"
-      body: "*"
-    };
-  };
-}
-```
-
-2. **编译添加网关**:
-```bash
---grpc-gateway_out . --grpc-gateway_opt paths=source_relative
-```
-
-3. **注册网关**:
 ```go
-app := zapp.NewApp("grpc-gateway", grpc.WithGatewayService())
-helloClient := hello.NewHelloServiceClient(grpc.GetGatewayClientConn("hello"))
-hello.RegisterHelloServiceHandlerClient(context.Background(), grpc.GetGatewayMux(), helloClient)
+g := grpc.New(grpc.WithGateway())
+app := zapp.NewApp("grpc-gateway", g.Options()...)
+
+c := hello.NewHelloServiceClient(g.GatewayConn("hello"))
+_ = hello.RegisterHelloServiceHandlerClient(context.Background(), g.Mux(), c)
 app.Run()
 ```
 
-**关键文件**: `gateway/http_gateway.go`, `gateway.go`
+`Options()` 内含 `AfterInitialize`（完成装配）与 `BeforeExit`（统一关闭）两个实例级 handler；
+**不传 `Options()` 会导致组合根未装配**，`ClientConn` 调用会返回明确错误，`Mux()`/`GatewayConn()` 会 panic。
 
 ---
 
-## 4. 核心 API 参考
+## 4. 核心 API（根包 `grpc`）
 
-### 4.1 服务端 API (`grpc/server.go`)
+| API | 说明 |
+|---|---|
+| `grpc.New(opts ...Option) *App` | 唯一组合根，构造全部模型并注入 port |
+| `(*App).Options() []zapp.Option` | 传给 `zapp.NewApp` 的装配选项 |
+| `(*App).Server(name, hooks...) grpc.ServiceRegistrar` | 声明具名 server；同名重复声明 panic |
+| `(*App).ServerDesc(hooks...)` | 以 pb `ServiceName` 命名 |
+| `(*App).ClientConn(name) grpc.ClientConnInterface` | 客户端连接（按需建立） |
+| `(*App).GatewayConn(name)` | 注入网关路由 hashKey 的连接 |
+| `(*App).Mux() *runtime.ServeMux` | 网关 mux |
+| `(*App).Close()` | 统一关闭，幂等 |
 
-| 函数 | 说明 |
-|------|------|
-| `grpc.WithService(hooks ...ServerHook)` | 启用 gRPC 服务 |
-| `grpc.Server(serverName string, hooks ...ServerHook)` | 获取服务注册器（同一 serverName 重复调用会 panic） |
-| `grpc.ServerDesc(hooks ...ServerHook)` | 获取服务注册器 (无服务名) |
+**装配选项**
 
-**ServerHook 类型**:
-```go
-type ServerHook = func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (resp interface{}, err error)
-```
+| Option | 说明 |
+|---|---|
+| `WithServer()` / `WithGateway()` | 启用 gRPC 服务 / HTTP 网关（对应 zapp service `grpc` / `grpc-gateway`） |
+| `WithServerHooks(hs...)` | 所有 server 的 unary 拦截器 |
+| `WithClientHooks(name, hs...)` / `WithAllClientHooks(hs...)` | 客户端拦截器 |
+| `WithRequestIP(fn)` | 覆盖网关 IP 提取策略 |
+| `WithoutErrCodeHook()` | 关闭「把 gRPC 错误码规则装到 zapp filter 链」的接壤装配 |
 
-### 4.2 客户端 API (`grpc/client.go`)
-
-| 函数 | 说明 |
-|------|------|
-| `grpc.GetClientConn(clientName string)` | 获取客户端连接 |
-| `grpc.WithTarget(serverName string)` | 指定目标服务器 |
-| `grpc.WithHashKey(hashKey string)` | 设置负载均衡 hashKey |
-| `grpc.RegistryClientHook(hook)` | 注册客户端 Hook |
-
-**ClientHook 类型**:
-```go
-type ClientHook = func(ctx context.Context, method string, req, reply interface{}, cc *ClientConn, invoker UnaryInvoker, opts ...CallOption) error
-```
-
-### 4.3 网关 API (`grpc/gateway.go`)
-
-| 函数 | 说明 |
-|------|------|
-| `grpc.WithGatewayService()` | 启用 HTTP 网关服务 |
-| `grpc.GetGatewayClientConn(clientName string)` | 获取网关客户端连接 |
-| `grpc.GetGatewayMux()` | 获取网关 Mux |
+**值类型与工具**：`grpc.ServerHook` / `ClientHook` / `ServiceRegistrar` / `ClientConnInterface` / `Code` / `GatewayData`；
+`grpc.Error` / `Errorf` / `GetErrCode`；`grpc.WithTarget` / `WithHashKey`；
+`grpc.ServerExtractCustomData` / `ClientInjectCustomData`；`grpc.GetGatewayData(ctx)`。
 
 ---
 
-## 5. 配置参考
+## 5. 旧版迁移对照（不兼容，不提供兼容层）
 
-### 5.1 服务端配置 (`server/config.go`)
+| 旧 | 新 |
+|---|---|
+| `grpc.WithService()` | `grpc.New(grpc.WithServer())` + `g.Options()` |
+| `grpc.WithGatewayService()` | `grpc.New(grpc.WithGateway())` + `g.Options()` |
+| `grpc.Server(name)` | `g.Server(name)` |
+| `grpc.ServerDesc()` | `g.ServerDesc()` |
+| `grpc.GetClientConn(name)` | `g.ClientConn(name)` |
+| `grpc.GetGatewayClientConn(name)` | `g.GatewayConn(name)` |
+| `grpc.GetGatewayMux()` | `g.Mux()` |
+| `grpc.RegistryClientHook` / `RegistryAllClientHook` | `grpc.WithClientHooks(name, ...)` / `WithAllClientHooks(...)` |
+| 包路径 `server/` `client/` `gateway/` `balance/` `registry/` `discover/` `pkg/` | 见第 2 节五层目录 |
+| `init()` 隐式注册、空导入启用实现 | 组合根显式 `Install()` 与注入 |
 
-```yaml
-services:
-  grpc:
-    serverName:
-      Bind: :3000                           # 监听地址
-      HeartbeatTime: 20                     # 心跳时间 (秒)
-      ReqDataValidate: true                 # 启用请求数据校验
-      ReqDataValidateAllField: false        # 校验所有字段
-      SendDetailedErrorInProduction: false  # 生产环境返回详细错误
-      TLSCertFile: ''                       # TLS 证书
-      TLSKeyFile: ''                        # TLS 私钥
-      RegistryAddress: 'static'             # 注册器类型
-      PublishName: ''                       # 注册名称
-      PublishAddress: ''                    # 注册地址
-      PublishWeight: 100                    # 权重
-```
-
-### 5.2 客户端配置 (`client/config.go`)
-
-```yaml
-components:
-  grpc:
-    clientName:
-      Address: localhost:3000      # 服务地址
-      Balance: weight_consistent_hash  # 均衡器类型
-      WaitFirstConn: false         # 等待首个连接
-      MinIdle: 2                   # 最小闲置连接
-      MaxIdle: 4                   # 最大闲置连接
-      MaxActive: 10                # 最大活跃连接
-      IdleTimeout: 3600            # 空闲超时 (秒)
-      WaitTimeout: 5               # 等待连接超时 (秒)
-      ConnectTimeout: 5            # 连接超时 (秒)
-      ProxyAddress: ''             # SOCKS5 代理
-      TLSCertFile: ''              # TLS 证书
-      TLSDomain: ''                # TLS 域名
-```
-
-### 5.3 网关配置 (`gateway/config.go`)
-
-```yaml
-services:
-  grpc-gateway:
-    Bind: :8080           # 监听地址
-    CloseWait: 3          # 关闭等待时间 (秒)
-    CorsAllowAll: true    # 允许跨域
-    Route:                # 路由配置
-      - Path: /hello/say
-        HashKeyByHeader: x-hash-key
-```
+配置 key 与 YAML 结构**未变**。
 
 ---
 
-## 6. 负载均衡器 (`balance/`)
+## 6. 配置参考
 
-| 均衡器 | 说明 | 适用场景 |
-|--------|------|----------|
-| `round_robin` | 轮询 | 均匀分配请求 |
-| `weight_random` | 加权随机 | 按权重随机分配 |
-| `weight_hash` | 加权 Hash | 相同 hashKey 路由到相同节点 |
-| `weight_consistent_hash` | 加权一致性 Hash (默认) | 节点变更时最小化影响 |
+### 6.1 服务端 `services.grpc.<serverName>`（`model/config.ServerConfig`）
 
-**设置 hashKey**:
-```go
-resp, err := client.Method(ctx, req, grpc.WithHashKey("user-id-123"))
-```
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `Bind` | `:3000` | 监听地址 |
+| `HeartbeatTime` | 20（最小 3） | 心跳秒数 |
+| `ReqDataValidate` | true | 启用 protoc-gen-validate 校验 |
+| `ReqDataValidateAllField` | false | 校验所有字段 |
+| `SendDetailedErrorInProduction` | false | 生产环境返回详细错误 |
+| `TLSCertFile` / `TLSKeyFile` | 空 | 服务端 TLS |
+| `RegistryAddress` | `static` | `static` 或 `redis://<组件名>` |
+| `PublishName` / `PublishAddress` / `PublishWeight` | 空 / 空 / 100 | 公告名、地址、权重 |
 
-**指定目标**:
-```go
-resp, err := client.Method(ctx, req, grpc.WithTarget("192.168.1.10:3000"))
-```
+### 6.2 客户端 `components.grpc.<clientName>`（`model/config.ClientConfig`）
 
----
+| 字段 | 默认 |
+|---|---|
+| `Address` | `localhost:3000`（`static`/直连地址或 `redis://<组件名>`） |
+| `Balance` | `weight_consistent_hash` |
+| `WaitFirstConn` / `MinIdle` / `MaxIdle` / `MaxActive` | false / 2 / 4 / 10 |
+| `BatchIncrement` / `BatchShrink` | 由 MinIdle/MaxIdle 推导 |
+| `IdleTimeout` / `MaxConnLifetime` | 3600s（<1 视为不限制） |
+| `WaitTimeout` / `ConnectTimeout` / `CheckIdleInterval` | 5s / 5s / 5s |
+| `MaxWaitConnCount` | 2000（<1 视为不限制） |
+| `ProxyAddress` / `TLSCertFile` / `TLSDomain` | 空 |
 
-## 7. 服务注册与发现
+### 6.3 网关 `services.grpc-gateway`（`model/config.GatewayConfig`）
 
-### 7.1 注册器 (`registry/`)
-
-**内置注册器**:
-- `static` - 静态注册 (默认)
-- `redis` - Redis 注册
-
-**注册器接口**:
-```go
-type Registry interface {
-    Registry(ctx context.Context, serverName string, addr *pkg.AddrInfo) error
-    UnRegistry(ctx context.Context, serverName string)
-    Close()
-}
-```
-
-### 7.2 发现器 (`discover/`)
-
-**内置发现器**:
-- `static` - 静态发现
-- `redis` - Redis 发现
-
-**发现器接口**:
-```go
-type Discover interface {
-    GetBuilder(ctx context.Context, serverName string) (resolver.Builder, error)
-    Close()
-}
-```
+| 字段 | 默认 |
+|---|---|
+| `Bind` / `CloseWait` / `CorsAllowAll` | `:8080` / 3s / true |
+| `Route` | `[]RouteConfig{Path, HashKeyByHeader}`，规则由 `model/route` 持有 |
 
 ---
 
-## 8. 请求数据校验
+## 7. 负载均衡（`model/balance`）
 
-使用 [protoc-gen-validate](https://github.com/envoyproxy/protoc-gen-validate):
+| 名称 | 规则 |
+|---|---|
+| `round_robin` | 轮询 |
+| `weight_random` | 加权随机 |
+| `weight_hash` | 加权 hash，按 `WithHashKey` 匹配 |
+| `weight_consistent_hash` | 加权一致性 hash（默认），无 key 时降级 |
 
-**Proto 示例**:
-```protobuf
-import "validate/validate.proto";
-
-message UserReq {
-  string name = 1 [(validate.rules).string = {
-    min_len: 3,
-    max_len: 20,
-  }];
-  int32 age = 2 [(validate.rules).int32 = {
-    gt: 0,
-    lt: 150,
-  }];
-}
-```
-
-**编译选项**:
-```bash
---validate_out "lang=go:." --validate_opt paths=source_relative
-```
+四种策略用一张只读表驱动，`Install()` 由组合根显式调用一次（替代旧版 4 个 `init()`）。
+`WithTarget` / `WithHashKey` 经 `foundation/ctxkey` 隐式传播到 Picker，不逐参数透传。
 
 ---
 
-## 9. 链路追踪 (`pkg/trace.go`)
+## 8. 注册与发现
 
-**追踪注入**:
-- 客户端自动注入追踪信息到 gRPC metadata
-- 服务端自动提取追踪信息
-- 支持跨服务调用链追踪
-
-**Metadata 键**:
-- `x-caller-service` - 调用方服务名
-- `x-caller-instance` - 调用方实例
-- `x-caller-method` - 调用方方法
-- `x-trace-id` - 追踪 ID
+- 实现：`model/registry`（注册）、`model/discover`（发现），共享 `model/registry/protocol.go` 的 key 协议。
+- 静态地址表由组合根创建**唯一实例**，同时注入注册侧与发现侧；不再有 `DefStatic` 全局单例、不再有读侧反向依赖写侧。
+- `StaticTable.Register` / `RedisRegistry.Register` 是**唯一施放入口**：状态生效与通知在同一次调用内完成。
+- Redis：注册有效期 30s、续租 10s、发现侧主动重发现 30s（通知失败时的兜底）。
+- 详细说明见 `model/registry/readme.md`。
 
 ---
 
-## 10. 开发注意事项
+## 9. 请求数据校验、追踪与元数据
 
-### 10.1 Proto 文件规范
-- `package` 决定 proto 引用路径和 RPC 路由
-- `option go_package` 用于 Go 包管理定位
-- 必须导入 `protos` 目录: `${GOPATH}/protos/zly-app/grpc/protos`
-
-### 10.2 服务端注意事项
-- 服务启动后自动注册到注册中心
-- 服务关闭前自动取消注册
-- 支持自定义 ServerHook 拦截器
-- **同名服务复用 Server**: 同一个 `serverName` 的多个 gRPC 服务会自动复用同一个 `GRpcServer` 实例（共享监听端口和配置）。
-- **重复 serverName 会 panic**: `grpc.Server(serverName)` 对同一个 serverName 只能调用一次，重复调用会 panic。如需在同一个 server 上注册多个服务，应只调用一次 `grpc.Server()` 获取注册器，然后在同一个注册器上注册多个服务
-
-### 10.3 客户端注意事项
-- 使用连接池管理 gRPC 连接
-- 每次请求应重新获取客户端
-- 支持自定义 ClientHook 拦截器
-
-### 10.4 网关注意事项
-- 请求/响应 JSON 字段名 = proto 字段名 (与 json 标签无关)
-- 自动生成 Swagger 文档 (可选)
-- **响应结构会被自动包装**: 使用 gateway 时，proto 定义的响应结构不会直接返回给 HTTP 客户端，而是被 `ForwardResponseRewriter` 自动包装为以下结构：
-  ```json
-  {
-    "code": 0,
-    "message": "",
-    "data": { /* proto 定义的原始响应结构 */ },
-    "trace_id": "xxx"
-  }
-  ```
-  - 正常响应：`code` 为 0，`data` 包含 proto 定义的完整响应消息
-  - 错误响应：`code` 为 gRPC 状态码，`message` 包含错误信息，`data` 为空
-  - `trace_id` 为链路追踪 ID（如果存在）
-  - 此包装行为由 `gateway/response.go` 中的 `ForwardResponseRewriter` 函数实现
+- 校验：`protoc-gen-validate` 生成的 `Validate()` / `ValidateAll()` 由 `adapter/grpcserver` 的拦截器调用。
+- 追踪：OTel `TextMapCarrier` 在 `foundation/wire` 编解码 gRPC metadata；客户端自动注入、服务端自动提取。
+- 主调信息：`filter.CallerMeta` 经 `caller_meta` metadata key 传递；`filter.GetCallerMetaByHeader` 用于网关入口。
+- 自定义 metadata：`grpc.ClientInjectCustomData` / `ServerExtractCustomData`，key 统一加 `cw_` 前缀后 base64。
+- 网关数据：`grpc.GetGatewayData(ctx)`；**取不到时返回空对象而不是 nil**，必须显式处理缺失分支。
 
 ---
 
-## 11. 常用命令
+## 10. 网关响应包装
 
-### 完整编译命令 (Linux)
-```bash
-protoc \
--I . -I ${GOPATH}/protos/zly-app/grpc/protos \
---go_out . --go_opt paths=source_relative \
---go-grpc_out . --go-grpc_opt paths=source_relative \
---grpc-gateway_out . --grpc-gateway_opt paths=source_relative \
---validate_out "lang=go:." --validate_opt paths=source_relative \
---openapiv2_out . \
-./*.proto
+`adapter/httpgw.ForwardResponseRewriter` 把 proto 响应包装成：
+
+```json
+{ "code": 0, "message": "", "data": { /* 原始 proto 响应 */ }, "trace_id": "xxx" }
 ```
 
-### 完整编译命令 (PowerShell)
+错误时 `code` 为 gRPC 状态码、`message` 为错误信息、`data` 为空。状态与通知在 `foundation/ctxkey.Slot` 同点共享。
+请求/响应 JSON 字段名 = proto 字段名（与 json 标签无关）。
+
+---
+
+## 11. 开发注意事项
+
+1. **新包必须在 `scripts/mso/layers.conf` 声明层次**，否则机检判红。
+2. **不要在 `init()` 里注册任何东西**，不要新增包级可变全局；装配动作全部收敛到 `app.New()`。
+3. 模型层只经 `foundation/port` 的窄接口横向调用，禁止直翻对方内部状态。
+4. 业务层（`usecase`）不许写判定规则；接口层（`adapter`）不许写业务规则。
+5. 横切上下文走 `foundation/ctxkey` 隐式传播 + 显式读取，禁止逐参数透传；取不到要显式处理。
+6. 新增环必须说明终止机制并补「会停」测试；终止组件由底座提供，模型禁止私有实现。
+7. `zapp` 的 `service.RegisterCreatorFunc`、`filter` 链仍是包级全局（zapp 自身待定债务），grpc 只在组合根做一次显式接壤，别在模型层碰它们。
+
+---
+
+## 12. proto 编译命令
+
 ```powershell
 protoc `
 -I . `
@@ -424,30 +253,38 @@ protoc `
 ./*.proto
 ```
 
----
-
-## 12. 示例代码位置
-
-| 示例 | 路径 |
-|------|------|
-| 服务端 | `example/server/main.go` |
-| 客户端 | `example/client/main.go` |
-| 网关 | `example/gateway/main.go` |
-| Proto 示例 | `example/pb/` |
+完整说明见根 `readme.md`。
 
 ---
 
-## 13. 关键源码索引
+## 13. 验证
 
-| 功能 | 文件位置 |
-|------|----------|
-| 服务端创建 | `server/grpc.go` |
-| 客户端创建 | `client/conn.go` |
-| 连接池管理 | `client/conn.go` |
-| 服务端拦截器 | `server/grpc.go`, `server/hooks.go` |
-| 客户端拦截器 | `client/hooks.go` |
-| 负载均衡 | `balance/*.go` |
-| 地址解析 | `pkg/address.go` |
-| 链路追踪 | `pkg/trace.go` |
-| 注册器 | `registry/registry.go` |
-| 发现器 | `discover/discover.go` |
+```powershell
+# 仓库内
+go build ./... ; go test ./...
+
+# 工作区门禁（含卫生 + MSO 依赖方向机检 + 13 module build/test）
+& 'C:\Program Files\Git\bin\bash.exe' ../../scripts/verify.sh
+```
+
+单测覆盖：`foundation/addr`、`foundation/ctxkey`、`foundation/resolver`（会停测试）、
+`model/{config,code,balance,route,hooks,connreg,serverreg,registry}`、`app`、`example/client`。
+重点用例：`model/registry.TestRegisterBroadcastsImmediately`（唯一施放入口）、
+`foundation/resolver.TestUpdateStateTerminates`（终止保障）。
+
+---
+
+## 14. 关键源码索引
+
+| 关注点 | 路径 |
+|---|---|
+| 组合根 / 装配 | `app/app.go`、`app/service.go` |
+| 生命周期用例 | `usecase/serve.go`、`usecase/dial.go`、`usecase/forward.go` |
+| 服务端 transport | `adapter/grpcserver/server.go`、`interceptor.go` |
+| 客户端连接池 | `adapter/grpcclient/factory.go`、`conn.go` |
+| 网关 | `adapter/httpgw/gateway.go`、`req_filter.go`、`response.go` |
+| 注册 / 发现 | `model/registry/`、`model/discover/` |
+| 错误码规则 | `model/code/code.go` |
+| 横切上下文 | `foundation/ctxkey/` |
+| port 契约 | `foundation/port/port.go` |
+| 机检层次声明 | `../../scripts/mso/layers.conf`（`[grpc]` 节） |

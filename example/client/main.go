@@ -10,12 +10,12 @@ import (
 )
 
 func main() {
-	app := zapp.NewApp("grpc-client")
+	g := grpc.New()
+	app := zapp.NewApp("grpc-client", g.Options()...)
 	defer app.Exit()
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
+	helloClient := hello.NewHelloServiceClient(g.ClientConn("hello"))
 
-	// 调用
 	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
 	if err != nil {
 		app.Fatal(err)

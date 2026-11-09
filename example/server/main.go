@@ -22,12 +22,12 @@ func (h *HelloService) Say(ctx context.Context, req *hello.SayReq) (*hello.SayRe
 }
 
 func main() {
-	app := zapp.NewApp("grpc-server",
-		grpc.WithService(), // 启用 grpc 服务
-	)
+	// 组合根：先构造实例，再把装配选项交给 zapp
+	g := grpc.New(grpc.WithServer())
+	app := zapp.NewApp("grpc-server", g.Options()...)
 
-	// 注册rpc服务
-	hello.RegisterHelloServiceServer(grpc.Server("hello"), new(HelloService))
+	// 声明 pb 服务（必须在 app.Run 之前）
+	hello.RegisterHelloServiceServer(g.Server("hello"), new(HelloService))
 
 	app.Run()
 }

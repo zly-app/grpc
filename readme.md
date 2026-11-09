@@ -15,9 +15,25 @@
 
 # grpc 服务
 
-> 提供用于 https://github.com/zly-app/zapp 的服务
+> 提供用于 https://github.com/zly-app/zapp 的 gRPC 服务端 / 客户端 / HTTP 网关能力。
 
-> 客户端说明转到 [这里](./client)
+## 架构（模型自组织架构 MSO，2026-11-09 起）
+
+| 层 | 包 | 职责 |
+|---|---|---|
+| 0 底座 | `foundation/{addr,ctxkey,wire,port,resolver}` | 纯机制与线缆协议，无业务语义 |
+| 1–2 模型 | `model/{config,code,balance,registry,discover,route,hooks,connreg,serverreg}` | 各自独占数据与规则，横向调用只走 port |
+| 3 业务层 | `usecase` | Serve / Dial / Forward 三个用例，只编排不藏规则 |
+| 4 接口层 | `adapter/{grpcserver,grpcclient,httpgw}` | 协议适配，禁止业务规则 |
+| 5 组合根 | `app` | 唯一装配点：构造全部模型并注入 port |
+| 6 门面 | 根包 `grpc` | 只转发，不持有状态 |
+
+**唯一组合根是 `grpc.New()`**：不再有包级可变全局、不再有 `init()` 副作用注册、不再覆写依赖方全局函数。
+依赖方向由工作区 `scripts/mso/layers.conf` 锁定，机检保证所有 import 只向下。
+
+> **不兼容旧版**：`grpc.WithService()` / `grpc.WithGatewayService()` / `grpc.Server()` / `grpc.GetClientConn()` /
+> `grpc.GetGatewayMux()` / `grpc.GetGatewayClientConn()` 等全局门面已删除，改为组合根实例方法。
+> 配置 key 与 YAML 结构保持不变。迁移对照见 [`AI_REFERENCE.md`](./AI_REFERENCE.md)。
 
 ## AI 助手开发指南
 
@@ -151,19 +167,18 @@ func (h *HelloService) Say(ctx context.Context, req *hello.SayReq) (*hello.SayRe
 }
 
 func main() {
-	app := zapp.NewApp("grpc-server",
-		grpc.WithService(), // 启用 grpc 服务
-	)
+	// 唯一组合根：先构造实例，再把装配选项交给 zapp
+	g := grpc.New(grpc.WithServer())
+	app := zapp.NewApp("grpc-server", g.Options()...)
 
-   // 注册 rpc 服务
-	hello.RegisterHelloServiceServer(grpc.Server("hello"), new(HelloService))
+	// 注册 rpc 服务（必须在 app.Run 之前）
+	hello.RegisterHelloServiceServer(g.Server("hello"), new(HelloService))
 
-	// 同名服务复用: 同一个 serverName 的多个 gRPC 服务会自动复用同一个 GRpcServer 实例
-	// 正确做法: 只调用一次 grpc.Server() 获取注册器，然后注册多个服务
-	// registrar := grpc.Server("hello")
+	// 同名服务复用 transport：只取一次注册器，在上面注册多个 pb 服务
+	// registrar := g.Server("hello")
 	// hello.RegisterHelloServiceServer(registrar, new(HelloService))
 	// hello2.RegisterHello2ServiceServer(registrar, new(Hello2Service))
-	// 注意: 对同一个 serverName 多次调用 grpc.Server() 会 panic
+	// 注意：对同一个 serverName 多次调用 g.Server() 会 panic
 
 	app.Run()
 }
@@ -306,15 +321,16 @@ import (
 )
 
 func main() {
-	app := zapp.NewApp("grpc-client")
+	g := grpc.New()
+	app := zapp.NewApp("grpc-client", g.Options()...)
 	defer app.Exit()
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetClientConn("hello")) // 获取客户端
+	helloClient := hello.NewHelloServiceClient(g.ClientConn("hello")) // 获取客户端
 
 	// 调用
 	resp, err := helloClient.Say(context.Background(), &hello.SayReq{Msg: "hello"})
 	if err != nil {
-		app.Fatal(resp)
+		app.Fatal(err)
 	}
 	app.Info("收到结果", resp.GetMsg())
 }
@@ -326,7 +342,7 @@ func main() {
 go mod tidy && go run server/main.go
 ```
 
-更多客户端说明参考 [这里](./client/)
+客户端的连接池、均衡器与配置项说明见 [`AI_REFERENCE.md`](./AI_REFERENCE.md)。
 
 # http 网关
 
@@ -436,12 +452,11 @@ import (
 )
 
 func main() {
-	app := zapp.NewApp("grpc-gateway",
-		grpc.WithGatewayService(), // 启用网关服务
-	)
+	g := grpc.New(grpc.WithGateway())
+	app := zapp.NewApp("grpc-gateway", g.Options()...)
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetGatewayClientConn("hello")) // 获取客户端。网关会通过这个 client 对 service 发起调用
-	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), grpc.GetGatewayMux(), helloClient) // 注册网关
+	helloClient := hello.NewHelloServiceClient(g.GatewayConn("hello")) // 网关通过这个 client 调用 service
+	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), g.Mux(), helloClient)
 
 	app.Run()
 }
@@ -512,7 +527,7 @@ pb/hello/hello.proto
 
 # 服务注册与发现
 
-转到 [这里](./registry/readme.md)
+转到 [这里](./model/registry/readme.md)（实现位于 `model/registry` 与 `model/discover`）
 
 # 常用完整的生成 pb 命令
 

@@ -10,7 +10,7 @@ require (
 	github.com/redis/go-redis/v9 v9.17.1
 	github.com/spf13/cast v1.3.1
 	github.com/zly-app/component/redis v0.0.0-20251201104934-96e59c17144e
-	github.com/zly-app/zapp v1.4.1
+	github.com/zly-app/zapp v1.4.6
 	github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97
 	github.com/zlyuancn/zbalancer v1.1.0
 	go.opentelemetry.io/otel v1.37.0

@@ -338,6 +338,8 @@ github.com/zly-app/component/redis v0.0.0-20251201104934-96e59c17144e h1:Y7wZ9Pf
 github.com/zly-app/component/redis v0.0.0-20251201104934-96e59c17144e/go.mod h1:k6Yys89P+VgMrQ8Mf+CcU4AonYTzPTO97XoqW5GZs6g=
 github.com/zly-app/zapp v1.4.1 h1:U1VT9Q+styw80Dm7mFFWOF5D6+zmmJnzT3swGGbhXqM=
 github.com/zly-app/zapp v1.4.1/go.mod h1:VrAeA6NbJ6Dz7l1pWRb8EKEyVeek52XTc93Lt82wA+o=
+github.com/zly-app/zapp v1.4.6 h1:kPTiGdFdQ3zSjOhNUFb8zWAAVRRp0HeRghUI1iDpI88=
+github.com/zly-app/zapp v1.4.6/go.mod h1:AZv2BvmhlVaeXhyEg1JlVYlVL3H1sQfqQm2zuFAkvWQ=
 github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97 h1:IxkdvMgQgvkWj3kFY9CR9W4XwtFkj0fOaWJvYuwn3yw=
 github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97/go.mod h1:8LD1Yt5uc6SNBYANF0IpVEx7NM+/d/9+ku5WZ9x/4W8=
 github.com/zlyuancn/zbalancer v1.1.0 h1:bDs59eIkEXUVTdwMKd6pko2PBAEgAw7TgIQwzzYZKjk=

@@ -10,12 +10,11 @@ import (
 )
 
 func main() {
-	app := zapp.NewApp("grpc-gateway",
-		grpc.WithGatewayService(), // 启用网关服务
-	)
+	g := grpc.New(grpc.WithGateway())
+	app := zapp.NewApp("grpc-gateway", g.Options()...)
 
-	helloClient := hello.NewHelloServiceClient(grpc.GetGatewayClientConn("hello")) // 获取客户端. 网关会通过这个client对service发起调用
-	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), grpc.GetGatewayMux(), helloClient) // 注册网关
+	helloClient := hello.NewHelloServiceClient(g.GatewayConn("hello"))
+	_ = hello.RegisterHelloServiceHandlerClient(context.Background(), g.Mux(), helloClient)
 
 	app.Run()
 }
