@@ -199,7 +199,9 @@ app.Run()
 - 实现：`model/registry`（注册）、`model/discover`（发现），共享 `model/registry/protocol.go` 的 key 协议。
 - 静态地址表由组合根创建**唯一实例**，同时注入注册侧与发现侧；不再有 `DefStatic` 全局单例、不再有读侧反向依赖写侧。
 - `StaticTable.Register` / `RedisRegistry.Register` 是**唯一施放入口**：状态生效与通知在同一次调用内完成。
-- Redis：注册有效期 30s、续租 10s、发现侧主动重发现 30s（通知失败时的兜底）。
+- Redis（**≥ 8.0**）：注册与续租各是一条 `HSETEX`（写值 + 设字段级 TTL 30s，每 10s 续租）；注销 `HDEL` + `PUBLISH`（3s 超时，失败由 TTL 兜底）；发现侧 `HGETALL` **纯只读**，按 endpoint 去重排序，不判过期、不删除；主动重发现 30s（通知失败时的兜底）。
+- Redis 记录：hash `grpc:server:reg:<serverName>`，**field = endpoint**（实例唯一标识），值 `{Name, Endpoint, Weight}`；`Name` = `"<PublishName>@<endpoint>"`，进入一致性 hash 环，必须跨重启稳定。有效期不落在值里，由字段级 TTL 表达，避免跨机时钟漂移。
+- 契约：`PublishAddress` / `Frame.Instance` **必须每实例唯一**，否则多进程抢同一 field（互相续命、值互相覆盖）。
 - 详细说明见 `model/registry/readme.md`。
 
 ---
@@ -269,6 +271,13 @@ go build ./... ; go test ./...
 
 单测覆盖：`foundation/addr`、`foundation/ctxkey`、`foundation/resolver`（会停测试）、
 `model/{config,code,balance,route,hooks,connreg,serverreg,registry}`、`app`、`example/client`。
+
+Redis 集成测试（`TestRedis*`）用环境变量门控，默认 skip；需要真实 Redis 8.x（miniredis 不支持字段级 TTL）：
+
+```powershell
+$env:GRPC_TEST_REDIS_ADDR='host:port'; $env:GRPC_TEST_REDIS_PASSWORD='xxx'
+go test ./model/registry/ ./model/discover/ -run 'TestRedis' -v
+```
 重点用例：`model/registry.TestRegisterBroadcastsImmediately`（唯一施放入口）、
 `foundation/resolver.TestUpdateStateTerminates`（终止保障）。
 

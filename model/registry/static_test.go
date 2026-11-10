@@ -123,8 +123,8 @@ func TestParseAddress(t *testing.T) {
 }
 
 func TestProtocolKeysAreShared(t *testing.T) {
-	if SeqKey("svc") != KeySeqIncr+"svc" || RegKey("svc") != KeyServerReg+"svc" ||
-		SignalKey("svc") != KeyRegSignal+"svc" || RegField(7) != "7" {
+	if RegKey("svc") != KeyServerReg+"svc" || SignalKey("svc") != KeyRegSignal+"svc" ||
+		RegField(" 10.0.0.1:3000 ") != "10.0.0.1:3000" {
 		t.Fatal("注册/发现共享的 key 协议不一致")
 	}
 }

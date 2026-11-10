@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	rredis "github.com/redis/go-redis/v9"
 	"github.com/bytedance/sonic"
 	"github.com/zly-app/component/redis"
 	"github.com/zly-app/zapp/component/gpool"
@@ -16,7 +17,11 @@ import (
 	"github.com/zly-app/grpc/foundation/addr"
 )
 
+// unregisterTimeout 限制注销动作的最长耗时：注销是「加速下线」，不能阻塞进程退出。
+const unregisterTimeout = 3 * time.Second
+
 // RedisRegistry 拥有本进程已注册实例的本地副本与续租规则；权威状态在 Redis hash。
+// 每条记录的有效期由字段级 TTL（HSETEX）表达，过期由 Redis 负责，客户端不需要删除。
 type RedisRegistry struct {
 	client  redis.UniversalClient
 	ticker  *time.Ticker
@@ -41,27 +46,19 @@ func NewRedisRegistry(_ context.Context, address string, creator redis.Creator) 
 	return r, nil
 }
 
-// Register 是唯一施放入口：写 hash → 发注册信号 → 记本地副本，三步不拆给外部。
+// Register 是唯一施放入口：写带 TTL 的 hash field → 发注册信号 → 记本地副本，三步不拆给外部。
 // 信号发布失败必须上抛，否则「状态变了、通知没发」，下游会静默失明。
 func (r *RedisRegistry) Register(ctx context.Context, serverName string, a *addr.Info) error {
-	seqNo, err := r.client.Incr(ctx, SeqKey(serverName)).Result()
-	if err != nil {
-		log.Error(ctx, "申请注册序号失败", zap.String("serverName", serverName), zap.Error(err))
-		return err
-	}
-
-	name := fmt.Sprintf("%s.%d", serverName, seqNo)
-	if a.Name != "" {
-		name = fmt.Sprintf("%s.%d", a.Name, seqNo)
+	if a == nil || a.Endpoint == "" {
+		return fmt.Errorf("注册地址为空: %s", serverName)
 	}
 	reg := &RegServer{
-		SeqNo:    int(seqNo),
-		Name:     name,
-		Endpoint: a.Endpoint,
+		Name:     regName(a),
+		Endpoint: RegField(a.Endpoint),
 		Weight:   a.Weight,
 	}
 
-	if err := r.writeOne(ctx, serverName, reg); err != nil {
+	if err := r.claim(ctx, serverName, reg); err != nil {
 		return err
 	}
 
@@ -78,7 +75,7 @@ func (r *RedisRegistry) Register(ctx context.Context, serverName string, a *addr
 }
 
 // Unregister 是唯一施放入口：删 hash 与发取消信号在同一调用内完成。
-// 任一失败显式记录，由发现侧 ReDiscoverInterval 的主动重发现兜底（环的终止保障）。
+// 删除只是「加速下线」；失败由字段 TTL 兜底，因此超时后放弃而不是阻塞退出。
 func (r *RedisRegistry) Unregister(ctx context.Context, serverName string) {
 	r.mx.Lock()
 	reg, ok := r.servers[serverName]
@@ -90,9 +87,13 @@ func (r *RedisRegistry) Unregister(ctx context.Context, serverName string) {
 		return
 	}
 
-	key, field := RegKey(serverName), RegField(reg.SeqNo)
+	ctx, cancel := context.WithTimeout(ctx, unregisterTimeout)
+	defer cancel()
+
+	key, field := RegKey(serverName), RegField(reg.Endpoint)
 	if err := r.client.HDel(ctx, key, field).Err(); err != nil {
-		log.Error(ctx, "取消注册失败", zap.String("serverName", serverName), zap.Error(err))
+		log.Error(ctx, "取消注册失败（注册记录将在 TTL 到期后自动失效）",
+			zap.String("serverName", serverName), zap.String("endpoint", field), zap.Error(err))
 	}
 
 	text, _ := sonic.MarshalString(&RegSignal{Reg: reg, IsUnReg: true})
@@ -122,11 +123,69 @@ func (r *RedisRegistry) leaseLoop() {
 	}
 }
 
-func (r *RedisRegistry) writeOne(ctx context.Context, serverName string, reg *RegServer) error {
-	reg.Deadline = time.Now().Unix() + RegistryExpire
+// regName 生成进入一致性 hash 环的节点名：以 endpoint 结尾保证「同实例跨重启不变」，
+// PublishName 只作可读前缀，不参与唯一性。
+func regName(a *addr.Info) string {
+	if a.Name == "" || a.Name == a.Endpoint {
+		return RegField(a.Endpoint)
+	}
+	return a.Name + "@" + RegField(a.Endpoint)
+}
+
+// claim 首次落地一条记录：写值与设 TTL 用一条 HSETEX 完成，不需要 Lua。
+// 先用 FNX 探测该 endpoint 是否已被占：被占时要区分「自己重启接管」与
+// 「配置错误导致两个活实例共用同一 endpoint」，后者靠 TTL 是否仍在被续来识别。
+func (r *RedisRegistry) claim(ctx context.Context, serverName string, reg *RegServer) error {
+	key, field := RegKey(serverName), RegField(reg.Endpoint)
 	data, _ := sonic.MarshalString(reg)
-	if err := r.client.HSet(ctx, RegKey(serverName), RegField(reg.SeqNo), data).Err(); err != nil {
-		log.Error(ctx, "写入注册记录失败", zap.String("serverName", serverName), zap.Error(err))
+
+	opt := &rredis.HSetEXOptions{
+		Condition:      rredis.HSetEXFNX,
+		ExpirationType: rredis.HSetEXExpirationEX,
+		ExpirationVal:  RegistryExpire,
+	}
+	n, err := r.client.HSetEXWithArgs(ctx, key, opt, field, data).Result()
+	if err != nil {
+		log.Error(ctx, "写入注册记录失败", zap.String("serverName", serverName), zap.String("endpoint", field), zap.Error(err))
+		return err
+	}
+	if n == 1 {
+		return nil
+	}
+
+	r.reportTakeover(ctx, key, field)
+
+	opt.Condition = ""
+	if err := r.client.HSetEXWithArgs(ctx, key, opt, field, data).Err(); err != nil {
+		log.Error(ctx, "覆盖注册记录失败", zap.String("serverName", serverName), zap.String("endpoint", field), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+// reportTakeover 记录「该 endpoint 上已有记录，本次是接管」。
+// 记录里没有可以稳定标识进程的字段（这正是弃用自增 seq 的原因），
+// 因此「自己重启」与「两个活实例共用同一 endpoint（配置错误）」在协议上无法区分，
+// 统一按接管处理，是否冲突以「注册表条目数 vs 实际实例数」比对为准。
+func (r *RedisRegistry) reportTakeover(ctx context.Context, key, field string) {
+	ttl, err := r.client.HTTL(ctx, key, field).Result()
+	if err != nil || len(ttl) != 1 {
+		return
+	}
+	log.Info(ctx, "接管已存在的注册记录（同 endpoint 重启与实例标识冲突无法区分，冲突以条目数与实例数比对为准）",
+		zap.String("key", key), zap.String("endpoint", field), zap.Int64("ttl", ttl[0]))
+}
+
+// touch 续租一条记录：重写值与重设 TTL 同为一条 HSETEX，无需判断记录是否已过期。
+func (r *RedisRegistry) touch(ctx context.Context, serverName string, reg *RegServer) error {
+	key, field := RegKey(serverName), RegField(reg.Endpoint)
+	data, _ := sonic.MarshalString(reg)
+	opt := &rredis.HSetEXOptions{
+		ExpirationType: rredis.HSetEXExpirationEX,
+		ExpirationVal:  RegistryExpire,
+	}
+	if err := r.client.HSetEXWithArgs(ctx, key, opt, field, data).Err(); err != nil {
+		log.Error(ctx, "续租注册记录失败", zap.String("serverName", serverName), zap.String("endpoint", field), zap.Error(err))
 		return err
 	}
 	return nil
@@ -137,16 +196,16 @@ func (r *RedisRegistry) leaseAll() {
 	defer utils.Trace.EndSpan(span)
 
 	r.mx.Lock()
-	snapshot := make(map[string]*RegServer, len(r.servers))
+	snapshot := make(map[string]RegServer, len(r.servers))
 	for k, v := range r.servers {
-		snapshot[k] = v
+		snapshot[k] = *v // 值拷贝：续租不再改共享对象，避免与 Unregister 并发读写
 	}
 	r.mx.Unlock()
 
 	for k, v := range snapshot {
 		serverName, reg := k, v
 		gpool.GetDefGPool().Go(func() error {
-			return r.writeOne(ctx, serverName, reg)
+			return r.touch(ctx, serverName, &reg)
 		}, func(err error) {
 			if err != nil {
 				log.Error(ctx, "续租注册记录失败", zap.String("serverName", serverName), zap.Error(err))

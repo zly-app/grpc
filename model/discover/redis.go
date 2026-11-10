@@ -42,13 +42,13 @@ type serverEntry struct {
 	mx      sync.Mutex
 }
 
-func (e *serverEntry) remove(seqNo int) {
+func (e *serverEntry) remove(endpoint string) {
 	e.mx.Lock()
 	defer e.mx.Unlock()
 
 	next := make([]*registry.RegServer, 0, len(e.regData))
 	for _, v := range e.regData {
-		if v.SeqNo != seqNo {
+		if v.Endpoint != endpoint {
 			next = append(next, v)
 		}
 	}
@@ -62,12 +62,15 @@ func (e *serverEntry) add(reg *registry.RegServer) {
 	e.mx.Lock()
 	defer e.mx.Unlock()
 
-	for _, v := range e.regData {
-		if v.SeqNo == reg.SeqNo {
+	for i, v := range e.regData {
+		if v.Endpoint == reg.Endpoint {
+			e.regData[i] = reg // 同一实例重复注册：以最新一次为准，顺序不变
+			e.update(e.regData)
 			return
 		}
 	}
 	e.regData = append(e.regData, reg)
+	sortRegData(e.regData)
 	e.update(e.regData)
 }
 
@@ -81,17 +84,29 @@ func (e *serverEntry) tryUpdate(regData []*registry.RegServer) {
 	e.mx.Lock()
 	defer e.mx.Unlock()
 
-	if len(regData) != len(e.regData) {
+	if !sameRegData(regData, e.regData) {
 		e.update(regData)
 		return
 	}
-	for i := range regData {
-		if regData[i].SeqNo != e.regData[i].SeqNo {
-			e.update(regData)
-			return
+	e.upTime = time.Now().Unix()
+}
+
+// sameRegData 判断两次发现结果是否等价；顺序由 endpoint 排序固定，可逐位比较。
+func sameRegData(a, b []*registry.RegServer) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Endpoint != b[i].Endpoint || a[i].Name != b[i].Name || a[i].Weight != b[i].Weight {
+			return false
 		}
 	}
-	e.upTime = time.Now().Unix()
+	return true
+}
+
+// sortRegData 按 endpoint 排序：地址集合稳定，避免无变化的发现结果触发 resolver 更新。
+func sortRegData(list []*registry.RegServer) {
+	sort.Slice(list, func(i, j int) bool { return list[i].Endpoint < list[j].Endpoint })
 }
 
 // NewRedisDiscover 建发现器并启动订阅与重发现循环。
@@ -178,7 +193,7 @@ func (r *RedisDiscover) consumeSignals() {
 			continue // 异常信号显式丢弃，不推进状态
 		}
 		if signal.IsUnReg {
-			entry.remove(signal.Reg.SeqNo)
+			entry.remove(signal.Reg.Endpoint)
 			continue
 		}
 		entry.add(signal.Reg)
@@ -204,32 +219,26 @@ func (r *RedisDiscover) discoverOne(ctx context.Context, serverName string) ([]*
 		return nil, err
 	}
 
-	delSeq := make([]string, 0)
-	nowUnix := time.Now().Unix()
-	ret := make([]*registry.RegServer, 0)
-	for seqNo, text := range data {
+	// 纯只读：过期由 Redis 的字段级 TTL 负责，这里既不判断也不删除。
+	// 反序列化失败的记录同样只跳过，等 TTL 到期自然消失。
+	ret := make([]*registry.RegServer, 0, len(data))
+	seen := make(map[string]struct{}, len(data))
+	for field, text := range data {
 		reg := registry.RegServer{}
 		if err := sonic.UnmarshalString(text, &reg); err != nil {
-			log.Warn(ctx, "注册记录反序列化失败", zap.String("serverName", serverName), zap.Error(err))
-			delSeq = append(delSeq, seqNo)
+			log.Warn(ctx, "注册记录反序列化失败", zap.String("serverName", serverName), zap.String("field", field), zap.Error(err))
 			continue
 		}
-		if nowUnix >= reg.Deadline {
-			if nowUnix-reg.Deadline >= registry.DelRegDataThanTimeOverdue {
-				log.Warn(ctx, "注册记录超长过期", zap.String("serverName", serverName), zap.String("seq", seqNo))
-				delSeq = append(delSeq, seqNo)
-			}
-			continue
+		if reg.Endpoint == "" {
+			reg.Endpoint = field
 		}
+		if _, ok := seen[reg.Endpoint]; ok {
+			continue // 同一 endpoint 只保留一条，避免加权均衡下权重翻倍
+		}
+		seen[reg.Endpoint] = struct{}{}
 		ret = append(ret, &reg)
 	}
-	sort.Slice(ret, func(i, j int) bool { return ret[i].SeqNo < ret[j].SeqNo })
-
-	if len(delSeq) > 0 {
-		if err := r.client.HDel(ctx, key, delSeq...).Err(); err != nil {
-			log.Error(ctx, "清理过期注册记录失败", zap.String("serverName", serverName), zap.Error(err))
-		}
-	}
+	sortRegData(ret)
 	return ret, nil
 }
 
