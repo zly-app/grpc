@@ -268,6 +268,13 @@ services:
 - **连续失败优先出局**：失败请求不计入延迟样本，但要累加连续失败次数；达到 3 次后 Pick
   先比失败级别、再比负载。否则「快速失败」的节点一直没有延迟样本，会被当成最快节点拿到
   最多流量（真机实测：一个实例恒返回 `Internal`，200 次请求 199 次落到它上面）。成功一次清零。
+- **只对节点问题降权**：`isNodeFailure` 认 `Unavailable` / `Internal` / `DeadlineExceeded` /
+  `ResourceExhausted` / `DataLoss` / `Unknown`；业务错误（`InvalidArgument`、`NotFound`、
+  `PermissionDenied`）和客户端取消不算，而且会清零之前的累积。判断走 `Unwrap` 链而不是
+  `status.Code`——拦截器常用 `%w` 包装，`status.Code` 只认直接实现 `GRPCStatus` 的那一层。
+- **可调参数**：`balance.SetRingReplicas(n)`（一致性 hash 副本数，默认 160）、
+  `balance.SetTuning(Tuning{SampleTTL, FailThreshold})`（样本保鲜期默认 30s、失败阈值默认 3 次）。
+  进程级生效，建议启动期调用；没做成 YAML 是因为只有一个值、绝大多数场景不需要改。
 - **只有 P2C 采样延迟**：`picked(inst, measure)`，`measure=false` 用方法值、零分配；
   `measure=true` 用闭包捕获开始时间（每次 Pick 多一次堆分配，约 20ns，相对单请求 179µs
   可忽略）。其余策略保持 0 allocs。

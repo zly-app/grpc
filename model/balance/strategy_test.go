@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func mkInsts(n int, weight uint16) []*instance {
@@ -233,7 +236,8 @@ func TestLeastRequestSampleExpiry(t *testing.T) {
 	}
 
 	// 把 b 的采样时刻推到保鲜期之外
-	b.sampled.Store(time.Now().Add(-sampleTTL - time.Second).UnixNano())
+	ttl := time.Duration(sampleTTL.Load())
+	b.sampled.Store(time.Now().Add(-ttl - time.Second).UnixNano())
 	if b.latency(time.Now().UnixNano()) != 0 {
 		t.Fatal("过期样本应返回 0，让实例回到「未知」被重新采样")
 	}
@@ -278,6 +282,121 @@ func TestLeastRequestSkipsFailingInstance(t *testing.T) {
 		if got := mustPick(t, s, ""); got != healthy {
 			t.Fatalf("应避开连续失败实例, 实际选了 %s", got.name)
 		}
+	}
+}
+
+// 副本数可调：点数必须严格等于 实例数 × 副本数（等权重时）。
+func TestSetRingReplicas(t *testing.T) {
+	defer SetRingReplicas(0)
+
+	insts := mkInsts(3, 100)
+	SetRingReplicas(16)
+	if n := len(buildRing(insts).points); n != 3*16 {
+		t.Fatalf("副本数 16、3 实例应有 48 个点, 实际 %d", n)
+	}
+
+	SetRingReplicas(0) // 0 恢复默认
+	if n := len(buildRing(insts).points); n != 3*defaultRingReplicas {
+		t.Fatalf("恢复默认后应有 %d 个点, 实际 %d", 3*defaultRingReplicas, n)
+	}
+}
+
+// 内部参数可调：阈值调到 1 后一次失败就该降权；TTL 调到 1ms 后样本很快过期。
+func TestSetTuning(t *testing.T) {
+	defer SetTuning(Tuning{SampleTTL: defaultSampleTTL, FailThreshold: defaultFailThreshold})
+
+	SetTuning(Tuning{FailThreshold: 1})
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	inst.observe(0, status.Error(codes.Internal, "boom"))
+	if inst.failedRank() == 0 {
+		t.Fatal("阈值改成 1 后，一次失败就该降权")
+	}
+
+	SetTuning(Tuning{SampleTTL: time.Millisecond})
+	inst.observe(10*time.Millisecond, nil)
+	time.Sleep(5 * time.Millisecond)
+	if inst.latency(time.Now().UnixNano()) != 0 {
+		t.Fatal("TTL 改成 1ms 后样本应过期")
+	}
+}
+
+// 业务错误不该让节点被降权：那是调用方的问题，拿来降权会让整个集群一起退化。
+func TestBusinessErrorDoesNotPenalize(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	for i := 0; i < 10; i++ {
+		inst.observe(time.Millisecond, status.Error(codes.InvalidArgument, "bad request"))
+	}
+	if inst.failedRank() != 0 {
+		t.Fatal("业务错误不该降权")
+	}
+}
+
+// 拦截器/hook 常用 %w 包装错误，判断必须穿透包装，否则业务错误会被当成节点问题。
+func TestIsNodeFailureUnwraps(t *testing.T) {
+	biz := fmt.Errorf("hook: %w", status.Error(codes.InvalidArgument, "bad request"))
+	if isNodeFailure(biz) {
+		t.Fatal("包装后的业务错误不该被当成节点问题")
+	}
+
+	node := fmt.Errorf("hook: %w", status.Error(codes.Unavailable, "down"))
+	if !isNodeFailure(node) {
+		t.Fatal("包装后的节点错误应被识别")
+	}
+}
+
+// 业务错误要照常记录延迟：不记的话它永远「没有样本」，会被当成最快节点抢流量。
+func TestBusinessErrorSamplesLatency(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	inst.observe(5*time.Millisecond, status.Error(codes.InvalidArgument, "bad request"))
+
+	if inst.ewma.Load() == 0 {
+		t.Fatal("业务错误也应记录延迟样本")
+	}
+	if inst.failedRank() != 0 {
+		t.Fatal("业务错误不该降权")
+	}
+}
+
+// 客户端主动取消不算节点问题：用户按了 Ctrl+C 不该让服务端被降权。
+func TestCanceledDoesNotPenalize(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	for i := 0; i < 10; i++ {
+		inst.observe(time.Millisecond, status.Error(codes.Canceled, "client gave up"))
+	}
+	if inst.failedRank() != 0 {
+		t.Fatal("客户端取消不该降权")
+	}
+}
+
+// 服务端自身的问题才降权。
+func TestNodeErrorsPenalize(t *testing.T) {
+	for _, code := range []codes.Code{
+		codes.Unavailable, codes.Internal, codes.DeadlineExceeded,
+		codes.ResourceExhausted, codes.DataLoss, codes.Unknown,
+	} {
+		inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+		for i := 0; i < 3; i++ {
+			inst.observe(time.Millisecond, status.Error(code, "boom"))
+		}
+		if inst.failedRank() == 0 {
+			t.Fatalf("%v 应被算作节点问题", code)
+		}
+	}
+}
+
+// 被降权后收到业务错误要立即恢复：节点是活的，只是这次调用参数不对。
+func TestBusinessErrorClearsPenalty(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	for i := 0; i < 5; i++ {
+		inst.observe(time.Millisecond, status.Error(codes.Internal, "boom"))
+	}
+	if inst.failedRank() == 0 {
+		t.Fatal("连续服务端错误后应被标记")
+	}
+
+	inst.observe(time.Millisecond, status.Error(codes.InvalidArgument, "bad request"))
+	if inst.failedRank() != 0 {
+		t.Fatal("业务错误应清除降权")
 	}
 }
 

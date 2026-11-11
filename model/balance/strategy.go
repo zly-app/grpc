@@ -14,6 +14,8 @@ import (
 	"unsafe"
 
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/zly-app/grpc/foundation/addr"
 )
@@ -54,14 +56,61 @@ func (i *instance) done(balancer.DoneInfo) { i.inflight.Add(-1) }
 // EWMA 的衰减速度：每来一个样本，向新值靠拢 1/ewmaDen。
 const ewmaDen = 5
 
+// 内部参数的默认值，可用 SetTuning / SetRingReplicas 覆盖。
+const (
+	defaultSampleTTL     = 30 * time.Second
+	defaultFailThreshold = 3
+	defaultRingReplicas  = 160
+)
+
 // sampleTTL 是延迟样本的保鲜期。
 //
 // 节点一旦被持续降权就再也拿不到新样本，旧的高延迟会永久保留、把它饿死。
 // 过期后回到「未知」，靠权重随机重新采样。
-const sampleTTL = 30 * time.Second
+var sampleTTL atomic.Int64
 
-// failPenaltyAfter 是开始降权的连续失败次数。一次失败可能只是抖动，连续 3 次才当作节点问题。
-const failPenaltyAfter = 3
+// failThreshold 是连续失败几次开始降权。一次失败可能只是抖动，所以要给个阈值。
+var failThreshold atomic.Int32
+
+// ringReplicas 是一致性 hash 环上每个实例的虚拟节点数（按权重等比缩放）。
+var ringReplicas atomic.Int32
+
+func init() {
+	sampleTTL.Store(int64(defaultSampleTTL))
+	failThreshold.Store(defaultFailThreshold)
+	ringReplicas.Store(defaultRingReplicas)
+}
+
+// Tuning 是 P2C 的内部参数，零值字段保持默认。
+type Tuning struct {
+	// SampleTTL 是延迟样本的保鲜期。节点被持续降权就拿不到新样本，
+	// 旧的高延迟会永久保留、把它饿死；过期后回到「未知」重新采样。
+	SampleTTL time.Duration
+	// FailThreshold 是连续失败几次开始降权。
+	FailThreshold int32
+}
+
+// SetTuning 调整 P2C 的内部参数；零值字段保持当前值。进程级生效，建议在启动期调用。
+func SetTuning(t Tuning) {
+	if t.SampleTTL > 0 {
+		sampleTTL.Store(int64(t.SampleTTL))
+	}
+	if t.FailThreshold > 0 {
+		failThreshold.Store(t.FailThreshold)
+	}
+}
+
+// SetRingReplicas 调整一致性 hash 环上每个实例的虚拟节点数（按权重等比缩放）。
+//
+// 默认 160（ketama 标准），对绝大多数场景足够。实例数很多（数百以上）且要求极均匀时
+// 可以调大，代价是内存与环重建耗时线性增长；调小会让分布更容易偏斜。
+// n <= 0 恢复默认。只影响此后的环重建，已在运行的 ClientConn 会在下次地址变化时生效。
+func SetRingReplicas(n int) {
+	if n <= 0 {
+		n = defaultRingReplicas
+	}
+	ringReplicas.Store(int32(n))
+}
 
 // observe 记录一次 RPC 的耗时并更新 EWMA。
 //
@@ -70,10 +119,18 @@ const failPenaltyAfter = 3
 // 的节点会被 P2C 当成最快节点而拿到最多流量。
 func (i *instance) observe(d time.Duration, err error) {
 	if err != nil {
-		i.fails.Add(1)
-		return
+		if isNodeFailure(err) {
+			// 节点错误不采样延迟：错误通常快速返回，采进去会把延迟拉低、
+			// 让故障节点显得更快。
+			i.fails.Add(1)
+			return
+		}
+		// 业务错误说明节点是活的：清零失败计数，且延迟照常采样。
+		// 不采样会让它永远「没有样本」，被 loadOf 当成最快节点抢走流量。
+		i.fails.Store(0)
+	} else {
+		i.fails.Store(0)
 	}
-	i.fails.Store(0)
 
 	if d <= 0 {
 		return
@@ -86,9 +143,36 @@ func (i *instance) observe(d time.Duration, err error) {
 	i.sampled.Store(time.Now().UnixNano())
 }
 
+// isNodeFailure 判断一个错误是否该算作「节点问题」。
+//
+// 只认服务端自身的问题：连不上、内部错误、超时、被限流、数据损坏，以及无法分类的错误
+// （`Unknown`——非 status 错误在 gRPC 层通常来自传输/编解码）。
+// 业务错误（参数错、找不到、无权限、客户端主动取消）是调用方的问题，拿来降权会让整个
+// 集群一起被降权，P2C 最终退化成随机，反而掩盖真正的故障。
+//
+// 走 Unwrap 链而不是 status.Code：拦截器/hook 可能用 %w 包装错误，
+// status.Code 只认直接实现 GRPCStatus 的那一层，包装后一律返回 Unknown，
+// 业务错误就会被误判成节点问题（真机实测过：业务错误实例在第 3 次后被完全排除）。
+func isNodeFailure(err error) bool {
+	code := codes.Unknown
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		if se, ok := e.(interface{ GRPCStatus() *status.Status }); ok {
+			code = se.GRPCStatus().Code()
+			break
+		}
+	}
+
+	switch code {
+	case codes.Unavailable, codes.Internal, codes.DeadlineExceeded,
+		codes.ResourceExhausted, codes.DataLoss, codes.Unknown:
+		return true
+	}
+	return false
+}
+
 // failedRank 返回降权用的失败级别；未达到阈值返回 0（正常参与负载比较）。
 func (i *instance) failedRank() int32 {
-	if f := i.fails.Load(); f >= failPenaltyAfter {
+	if f := i.fails.Load(); f >= failThreshold.Load() {
 		return f
 	}
 	return 0
@@ -101,7 +185,7 @@ func (i *instance) latency(now int64) int64 {
 	if lat <= 0 {
 		return 0
 	}
-	if now-i.sampled.Load() > int64(sampleTTL) {
+	if now-i.sampled.Load() > sampleTTL.Load() {
 		return 0
 	}
 	return lat
@@ -249,10 +333,6 @@ func (s *weightHashStrategy) Pick(hashKey string) (*instance, error) {
 
 // ---------- 一致性 hash（ketama） ----------
 
-// ringReplicas 是「权重 = DefWeight」时的虚拟节点数。参考 ketama 的 160。
-// 虚拟节点数按权重等比缩放，而不是直接等于权重——否则调权重会连带动环的精度。
-const ringReplicas = 160
-
 type ringStrategy struct {
 	instList
 	ring atomic.Pointer[hashRing]
@@ -271,10 +351,12 @@ type hashRing struct {
 }
 
 func buildRing(insts []*instance) *hashRing {
+	// 虚拟节点数按权重等比缩放，而不是直接等于权重——否则调权重会连带动环的精度。
+	base := float64(ringReplicas.Load())
 	replicas := make([]int, len(insts))
 	total := 0
 	for i, inst := range insts {
-		n := int(math.Round(float64(ringReplicas) * float64(weightOf(inst)) / float64(addr.DefWeight)))
+		n := int(math.Round(base * float64(weightOf(inst)) / float64(addr.DefWeight)))
 		if n < 1 {
 			n = 1
 		}
@@ -352,16 +434,19 @@ func (s *leastRequestStrategy) Pick(string) (*instance, error) {
 	now := time.Now().UnixNano() // 两个候选共用一次取时
 	best, cand := insts[i], insts[j]
 
+	ra, rb := best.failedRank(), cand.failedRank()
+	lb, lc := loadOf(best, now), loadOf(cand, now)
+
 	// 连续失败的节点先出局：快速失败会拉低延迟样本，只比 load 会让它拿到更多流量。
 	// 用独立的失败级别比较，而不是把系数乘进 load，避免极端值溢出、语义也清楚。
-	if ra, rb := best.failedRank(), cand.failedRank(); ra != rb {
+	if ra != rb {
 		if rb < ra {
 			return cand, nil
 		}
 		return best, nil
 	}
 
-	if lb, lc := loadOf(best, now), loadOf(cand, now); lb != lc {
+	if lb != lc {
 		if lc < lb {
 			return cand, nil
 		}
