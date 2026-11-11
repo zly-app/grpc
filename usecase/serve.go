@@ -9,16 +9,20 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/zly-app/zapp/core"
+	"github.com/zly-app/zapp/pkg/utils"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
 	"github.com/zly-app/grpc/foundation/addr"
 	"github.com/zly-app/grpc/foundation/port"
 	"github.com/zly-app/grpc/model/config"
-	"github.com/zly-app/grpc/model/registry"
+	"github.com/zly-app/grpc/model/endpoint"
 	"github.com/zly-app/grpc/model/serverreg"
 )
 
@@ -32,7 +36,7 @@ type ServerBuilder interface {
 
 // RegistryDirectory 是业务层需要的 port：按地址规格取注册器。
 type RegistryDirectory interface {
-	Get(ctx context.Context, spec registry.AddressSpec) (port.Registry, error)
+	Get(ctx context.Context, spec endpoint.Spec) (port.Registry, error)
 }
 
 type startedServer struct {
@@ -79,8 +83,12 @@ func (s *Serve) Start() error {
 			return err
 		}
 
-		spec := registry.ParseAddress(conf.RegistryAddress)
-		reg, err := s.registries.Get(s.app.BaseContext(), spec)
+		src, err := endpoint.ParseSource(conf.RegistryAddress)
+		if err != nil {
+			runner.Close()
+			return err
+		}
+		reg, err := s.registries.Get(s.app.BaseContext(), src.Spec())
 		if err != nil {
 			runner.Close()
 			return err
@@ -92,7 +100,7 @@ func (s *Serve) Start() error {
 			Weight:   conf.PublishWeight,
 		}
 		if info.Endpoint == "" {
-			info.Endpoint = fmt.Sprintf("%s:%d", s.app.GetConfig().Config().Frame.Instance, runner.BoundPort())
+			info.Endpoint = net.JoinHostPort(publishHost(s.app, conf.Bind), strconv.Itoa(runner.BoundPort()))
 		}
 		if info.Name == "" {
 			info.Name = e.Name
@@ -122,4 +130,37 @@ func (s *Serve) Close() {
 		v.registry.Unregister(context.Background(), v.name)
 		v.runner.Close()
 	}
+}
+
+// publishHost 决定默认公告地址的主机部分，优先级：
+//
+//  1. Bind 里写死的具体主机（如 127.0.0.1、某内网 IP）—— 监听地址就是可达地址，最准确；
+//  2. Frame.Instance 能解析成 IP（其默认值就是本机 IP）—— 它是显式声明的对外标识，尊重配置；
+//  3. 本机 IP —— Instance 被配成实例名（如 order-svc-1）时不能当地址用，退回可达地址。
+func publishHost(app core.IApp, bind string) string {
+	if host := bindHost(bind); host != "" && !isAnyAddr(host) {
+		return host
+	}
+	instance := app.GetConfig().Config().Frame.Instance
+	if net.ParseIP(instance) != nil {
+		return instance
+	}
+	if ip := utils.GetInstance(""); ip != "" {
+		return ip
+	}
+	return instance
+}
+
+// bindHost 取 Bind 里的主机部分；解析不出（如缺少端口）时返回空。
+func bindHost(bind string) string {
+	host, _, err := net.SplitHostPort(bind)
+	if err != nil {
+		return ""
+	}
+	return strings.Trim(host, "[]")
+}
+
+// isAnyAddr 判断是否是「所有网卡」的通配地址。
+func isAnyAddr(host string) bool {
+	return host == "" || host == "0.0.0.0" || host == "::"
 }

@@ -22,7 +22,7 @@
 | 层 | 包 | 职责 |
 |---|---|---|
 | 0 底座 | `foundation/{addr,ctxkey,wire,port,resolver}` | 纯机制与线缆协议，无业务语义 |
-| 1–2 模型 | `model/{config,code,balance,registry,discover,hashkey,hooks,connreg,serverreg}` | 各自独占数据与规则，横向调用只走 port |
+| 1 模型 | `model/{config,code,balance,endpoint,registry,discover,hashkey,hooks,connreg,serverreg}` | 各自独占数据与规则，横向调用只走 port；`endpoint` 是注册/发现共享协议 |
 | 3 业务层 | `usecase` | Serve / Dial / Forward 三个用例，只编排不藏规则 |
 | 4 接口层 | `adapter/{grpcserver,grpcclient,httpgw}` | 协议适配，禁止业务规则 |
 | 5 组合根 | `app` | 唯一装配点：构造全部模型并注入 port |
@@ -206,11 +206,11 @@ services:
          TLSCertFile: '' # tls 公钥文件路径
          TLSKeyFile: '' # tls 私钥文件路径
 
-         RegistryAddress: 'static' # 注册地址，默认 static, 参考 https://github.com/zly-app/grpc/tree/master/registry
+         RegistryAddress: 'static' # 注册来源：static（只在本进程内可见）或 redis://<components.redis 组件名>
          PublishName: '' # 公告名，在注册中心中定义的名称，如果为空则自动设为当前 grpc 服务名
-         PublishAddress: '' # 公告地址，在注册中心中定义的地址，客户端会根据这个地址连接服务端，如果为空则自动设为 实例 ip:BindPort
+         PublishAddress: '' # 公告地址，客户端按它连接；留空则按 Bind 的具体主机 → Frame.Instance(IP) → 本机 IP 推导，端口取实际监听端口
          PublishWeight: 100 # 公告权重，默认 100
-```
+         ```
 
 # 请求数据校验
 

@@ -30,12 +30,13 @@ grpc/
 │   ├── wire/                   线缆编解码：OTel trace / CallerMeta / 自定义 metadata key
 │   ├── port/                   窄接口：Registry / Discover / StaticTable / Balancer / ServerRunner / Conn
 │   └── resolver/               gRPC Resolver 地址广播机制（带终止保障）
-├── model/                      1–2 模型层：数据 + 规则所有者，每个包文件头写契约
+├── model/                      1 模型层：数据 + 规则所有者，每个包文件头写契约
 │   ├── config/                 三份配置与默认值/约束规则、配置 key 常量
 │   ├── code/                   gRPC code ↔ zapp codeType 映射、错误码工具
 │   ├── balance/                均衡策略表（表驱动）+ Picker
-│   ├── registry/               注册中心 + Redis 共享协议 + 静态地址表 + 目录
-│   ├── discover/               发现器目录 + static/redis 实现
+│   ├── endpoint/               注册/发现共享协议：key 布局、注册记录、信号、地址来源规格
+│   ├── registry/               注册实现 + 静态地址表 + 注册器目录
+│   ├── discover/               发现实现（地址状态机）+ 发现器目录
 │   ├── hashkey/                网关 hashKey 规则表（path → 请求头）
 │   ├── hooks/                  客户端 hook 表
 │   ├── connreg/                客户端连接集合
@@ -139,7 +140,9 @@ app.Run()
 | 包路径 `server/` `client/` `gateway/` `balance/` `registry/` `discover/` `pkg/` | 见第 2 节五层目录 |
 | `init()` 隐式注册、空导入启用实现 | 组合根显式 `Install()` 与注入 |
 
-配置 key 与 YAML 结构仅在网关 hashKey 规则上变更（旧 `Route` → `HashKey`，见 6.3），其余未变。
+配置 key 只在网关 hashKey 规则上有变更（旧 `Route` → `HashKey`，见 6.3）。
+注册/发现仍是一行来源字符串（`RegistryAddress` / `Address`），只是解析改严：未知 scheme、
+`redis://` 缺组件名在启动期报错，不再静默降级（见 6.1/6.2）。
 
 ---
 
@@ -155,14 +158,18 @@ app.Run()
 | `ReqDataValidateAllField` | false | 校验所有字段 |
 | `SendDetailedErrorInProduction` | false | 生产环境返回详细错误 |
 | `TLSCertFile` / `TLSKeyFile` | 空 | 服务端 TLS |
-| `RegistryAddress` | `static` | `static` 或 `redis://<组件名>` |
+| `RegistryAddress` | `static` | 注册来源：`static` 或 `redis://<组件名>`；启动期严格解析，未知 scheme 直接失败 |
 | `PublishName` / `PublishAddress` / `PublishWeight` | 空 / 空 / 100 | 公告名、地址、权重 |
+
+`RegistryAddress` 与客户端的 `Address` 用同一套语法、同一个解析器（`endpoint.ParseSource`）：
+`static` / `host:port[,host:port]` / `redis://<组件名>`。未知 scheme（如 `rediss://`）、
+`redis://` 缺组件名、组件名带逗号或斜杠，都在启动校验期报错，不再「猜不出来就当直连」。
 
 ### 6.2 客户端 `components.grpc.<clientName>`（`model/config.ClientConfig`）
 
 | 字段 | 默认 |
 |---|---|
-| `Address` | `localhost:3000`（`static`/直连地址或 `redis://<组件名>`） |
+| `Address` | `localhost:3000`；`host:port[,host:port]` / `static` / `redis://<组件名>` |
 | `Balance` | `weight_consistent_hash` |
 | `WaitFirstConn` / `MinIdle` / `MaxIdle` / `MaxActive` | false / 2 / 4 / 10 |
 | `BatchIncrement` / `BatchShrink` | 由 MinIdle/MaxIdle 推导 |
@@ -170,6 +177,19 @@ app.Run()
 | `WaitTimeout` / `ConnectTimeout` / `CheckIdleInterval` | 5s / 5s / 5s |
 | `MaxWaitConnCount` | 2000（<1 视为不限制） |
 | `ProxyAddress` / `TLSCertFile` / `TLSDomain` | 空 |
+
+```yaml
+services:
+  grpc:
+    hello:
+      RegistryAddress: redis://grpc_registry   # 服务端注册来源
+
+components:
+  grpc:
+    hello:
+      Address: redis://grpc_registry           # 客户端发现来源
+      # 直连写法：Address: '10.0.0.1:3000,10.0.0.2:3000'
+```
 
 ### 6.3 网关 `services.grpc-gateway`（`model/config.GatewayConfig`）
 
@@ -213,11 +233,15 @@ services:
 
 ## 8. 注册与发现
 
-- 实现：`model/registry`（注册）、`model/discover`（发现），共享 `model/registry/protocol.go` 的 key 协议。
-- 静态地址表由组合根创建**唯一实例**，同时注入注册侧与发现侧；不再有 `DefStatic` 全局单例、不再有读侧反向依赖写侧。
+- 实现：`model/registry`（注册）、`model/discover`（发现）；共享协议在 `model/endpoint`（key 布局、记录、信号、地址规格、有效期常量），**发现侧不再 import 注册实现**。
+- 静态地址表由组合根创建**唯一实例**，同时注入注册侧与发现侧；注册按 endpoint 幂等 upsert（不追加重复地址）。
 - `StaticTable.Register` / `RedisRegistry.Register` 是**唯一施放入口**：状态生效与通知在同一次调用内完成。
-- Redis（**≥ 8.0**）：注册与续租各是一条 `HSETEX`（写值 + 设字段级 TTL 30s，每 10s 续租）；注销 `HDEL` + `PUBLISH`（3s 超时，失败由 TTL 兜底）；发现侧 `HGETALL` **纯只读**，按 endpoint 去重排序，不判过期、不删除；主动重发现 30s（通知失败时的兜底）。
-- Redis 记录：hash `grpc:server:reg:<serverName>`，**field = endpoint**（实例唯一标识），值 `{Name, Endpoint, Weight}`；`Name` = `"<PublishName>@<endpoint>"`，进入一致性 hash 环，必须跨重启稳定。有效期不落在值里，由字段级 TTL 表达，避免跨机时钟漂移。
+- Redis（**≥ 8.0**）：注册 `HSETEX ... FNX`（field 被占时按 TTL 判断冲突再覆盖）、续租 `HSETEX ... FXX`（**返回 0 = 记录已被 TTL 清掉 → 重建并补发信号**）、注销 `HDEL` + `PUBLISH`（3s 超时）、发现侧 `HGETALL` **纯只读**（去重排序，不判过期、不删除）、主动重发现 30s。
+- **发现侧状态机**：写者串行 + 读者无锁不可变快照；每次变更记版本，`HGETALL` 前后版本不一致时快照**只补不删**（防旧快照回滚掉刚注册的实例）；时序为「登记 → 订阅 → 记版本 → 拉快照」；下线信号应用前 `HEXISTS` 二次确认。
+- **失败处置**：`PUBLISH` 失败只记 ERROR（重发现兜底），不阻断启动；续租重建必须补发信号，否则出现「服务活着但发现侧看不到」的黑洞。地址为空时 `Builder` 返回 `discover.ErrNoInstance` 并在 1s 节流内补拉。
+- **心跳与重发现自己调度**，不借用共享任务池（池满会把续租推迟到 TTL 之后）。
+- Redis 记录：hash `grpc:server:reg:<serverName>`，**field = endpoint**，值 `{Name, Endpoint, Weight}`；`Name` = `"<PublishName>@<endpoint>"`，进入一致性 hash 环，必须跨重启稳定。有效期不落在值里，由字段级 TTL 表达。
+- `PublishAddress` 留空时按序推导公告主机：`Bind` 的具体主机 → `Frame.Instance`（可解析为 IP 时）→ 本机 IP。`Frame.Instance` 被配成实例名时不会直接当地址用。
 - 契约：`PublishAddress` / `Frame.Instance` **必须每实例唯一**，否则多进程抢同一 field（互相续命、值互相覆盖）。
 - 详细说明见 `model/registry/readme.md`。
 
@@ -287,7 +311,8 @@ go build ./... ; go test ./...
 ```
 
 单测覆盖：`foundation/addr`、`foundation/ctxkey`、`foundation/resolver`（会停测试）、
-`model/{config,code,balance,hashkey,hooks,connreg,serverreg,registry}`、`app`、`example/client`。
+`model/{config,code,balance,endpoint,discover,hashkey,hooks,connreg,serverreg,registry}`、`app`、`example/client`。
+并发安全用 `go test -race ./model/...` 验证（发现侧读路径无锁，写路径串行）。
 
 Redis 集成测试（`TestRedis*`）用环境变量门控，默认 skip；需要真实 Redis 8.x（miniredis 不支持字段级 TTL）：
 
@@ -309,6 +334,7 @@ go test ./model/registry/ ./model/discover/ -run 'TestRedis' -v
 | 服务端 transport | `adapter/grpcserver/server.go`、`interceptor.go` |
 | 客户端连接池 | `adapter/grpcclient/factory.go`、`conn.go` |
 | 网关 | `adapter/httpgw/gateway.go`、`req_filter.go`、`response.go` |
+| 端点协议（key / 记录 / 信号） | `model/endpoint/` |
 | 注册 / 发现 | `model/registry/`、`model/discover/` |
 | 错误码规则 | `model/code/code.go` |
 | 横切上下文 | `foundation/ctxkey/` |

@@ -11,7 +11,9 @@ import (
 
 	"github.com/zly-app/zapp/core"
 
+	"github.com/zly-app/grpc/foundation/addr"
 	"github.com/zly-app/grpc/model/balance"
+	"github.com/zly-app/grpc/model/endpoint"
 )
 
 const (
@@ -33,19 +35,19 @@ type ServerConfig struct {
 	TLSCertFile                   string
 	TLSKeyFile                    string
 
-	RegistryAddress string
+	RegistryAddress string // 注册来源：static（不对外公告）或 redis://<组件名>
 	PublishName     string
 	PublishAddress  string
 	PublishWeight   uint16
 }
 
 const (
-	defServerBind          = ":3000"
-	defHeartbeatTime       = 20
-	defMinHeartbeatTime    = 3
-	defReqDataValidate     = true
-	defRegistryAddressType = "static"
-	defWeight              = uint16(100)
+	defServerBind       = ":3000"
+	defHeartbeatTime    = 20
+	defMinHeartbeatTime = 3
+	defReqDataValidate  = true
+	defRegistryAddress  = "static"
+	defWeight           = uint16(100)
 )
 
 // NewServerConfig 提供一份带默认值的服务端配置。
@@ -53,14 +55,14 @@ func NewServerConfig() *ServerConfig {
 	return &ServerConfig{
 		HeartbeatTime:           defHeartbeatTime,
 		ReqDataValidate:         defReqDataValidate,
-		RegistryAddress:         defRegistryAddressType,
+		RegistryAddress:         defRegistryAddress,
 		PublishWeight:           defWeight,
 		Bind:                    defServerBind,
 		ReqDataValidateAllField: false,
 	}
 }
 
-// Check 修正不满足约束的取值。
+// Check 修正不满足约束的取值，并在启动期把来源字符串解析一遍。
 func (c *ServerConfig) Check() error {
 	if c.Bind == "" {
 		c.Bind = defServerBind
@@ -68,18 +70,27 @@ func (c *ServerConfig) Check() error {
 	if c.HeartbeatTime < defMinHeartbeatTime {
 		c.HeartbeatTime = defMinHeartbeatTime
 	}
-	if c.RegistryAddress == "" {
-		c.RegistryAddress = defRegistryAddressType
-	}
 	if c.PublishWeight == 0 {
 		c.PublishWeight = defWeight
+	}
+	if c.RegistryAddress = strings.TrimSpace(c.RegistryAddress); c.RegistryAddress == "" {
+		c.RegistryAddress = defRegistryAddress
+	}
+
+	src, err := endpoint.ParseSource(c.RegistryAddress)
+	if err != nil {
+		return fmt.Errorf("RegistryAddress 无效: %w", err)
+	}
+	// 服务端只关心「注册到哪」，直连地址对它是无意义输入，直接拒绝而不是忽略。
+	if src.Type == endpoint.TypeStatic && len(src.Addresses) > 0 {
+		return fmt.Errorf("RegistryAddress 只接受 static 或 redis://<组件名>，不接受直连地址: %q", c.RegistryAddress)
 	}
 	return nil
 }
 
-// ClientConfig 拥有连接池、地址、均衡器、代理与 TLS 的规则。
+// ClientConfig 拥有连接池、地址来源、均衡器、代理与 TLS 的规则。
 type ClientConfig struct {
-	Address string
+	Address string // 服务地址：host:port[,host:port] / static / redis://<组件名>
 	Balance string
 
 	WaitFirstConn     bool
@@ -126,10 +137,26 @@ func NewClientConfig() *ClientConfig {
 	}
 }
 
-// Check 修正不满足约束的取值。
+// Check 修正不满足约束的取值，并拒绝已移除的旧配置键。
 func (c *ClientConfig) Check() error {
-	if c.Address == "" {
+	if c.Address = strings.TrimSpace(c.Address); c.Address == "" {
 		c.Address = defClientAddress
+	}
+
+	src, err := endpoint.ParseSource(c.Address)
+	if err != nil {
+		return fmt.Errorf("Address 无效: %w", err)
+	}
+	if src.Type == endpoint.TypeStatic {
+		// static 必须给出真实地址：只写 "static" 等于「没有地址」，旧实现会静默空转。
+		if len(src.Addresses) == 0 {
+			return fmt.Errorf("Address 为 static 时必须给出直连地址（如 10.0.0.1:3000），或用 redis://<组件名>")
+		}
+		for _, a := range src.Addresses {
+			if _, err := addr.Parse(a); err != nil {
+				return fmt.Errorf("Address 中的直连地址无效: %w", err)
+			}
+		}
 	}
 	if c.Balance == "" {
 		c.Balance = balance.WeightConsistentHash

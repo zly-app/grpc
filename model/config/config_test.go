@@ -11,17 +11,39 @@ func TestServerConfigDefaults(t *testing.T) {
 		t.Fatalf("服务端默认值不符: %+v", c)
 	}
 	if c.RegistryAddress != "static" {
-		t.Fatalf("默认注册器 = %q, want static", c.RegistryAddress)
+		t.Fatalf("默认注册来源 = %q, want static", c.RegistryAddress)
 	}
 }
 
 func TestServerConfigConstraints(t *testing.T) {
-	c := &ServerConfig{Bind: "", HeartbeatTime: 1, PublishWeight: 0, RegistryAddress: ""}
+	c := NewServerConfig()
+	c.Bind = ""
+	c.HeartbeatTime = 1
+	c.PublishWeight = 0
+	c.RegistryAddress = "  "
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
 	if c.Bind != ":3000" || c.HeartbeatTime != 3 || c.PublishWeight != 100 || c.RegistryAddress != "static" {
 		t.Fatalf("约束修正不符: %+v", c)
+	}
+}
+
+// 来源字符串严格解析：未知 scheme、redis 缺组件名、服务端写直连地址都算配置错误。
+func TestServerConfigRegistryAddress(t *testing.T) {
+	for _, v := range []string{"static", " static ", "redis://grpc_registry"} {
+		c := NewServerConfig()
+		c.RegistryAddress = v
+		if err := c.Check(); err != nil {
+			t.Fatalf("%q 应被接受: %v", v, err)
+		}
+	}
+	for _, v := range []string{"rediss://grpc_registry", "redis://", "consul://x", "10.0.0.1:3000", "redis:/x"} {
+		c := NewServerConfig()
+		c.RegistryAddress = v
+		if err := c.Check(); err == nil {
+			t.Fatalf("%q 应判为配置错误", v)
+		}
 	}
 }
 
@@ -38,8 +60,41 @@ func TestClientConfigDefaults(t *testing.T) {
 	}
 }
 
+// 客户端地址与注册来源同构：直连列表 / static / redis://<组件名>。
+func TestClientConfigAddress(t *testing.T) {
+	for _, v := range []string{
+		"localhost:3000",
+		"10.0.0.1:3000, 10.0.0.2:3000",
+		"static://10.0.0.1:3000",
+		"redis://grpc_registry",
+		"  ",
+	} {
+		c := NewClientConfig()
+		c.Address = v
+		if err := c.Check(); err != nil {
+			t.Fatalf("%q 应被接受: %v", v, err)
+		}
+	}
+
+	for _, v := range []string{
+		"static",                 // 只写 static 等于没有地址
+		"rediss://grpc_registry", // 未知 scheme
+		"redis://",               // 缺组件名
+		"10.0.0.1:3000/path",     // 地址里带 path
+	} {
+		c := NewClientConfig()
+		c.Address = v
+		if err := c.Check(); err == nil {
+			t.Fatalf("%q 应判为配置错误", v)
+		}
+	}
+}
+
 func TestClientConfigConstraints(t *testing.T) {
-	c := &ClientConfig{BatchIncrement: 999, IdleTimeout: -1, WaitTimeout: 0}
+	c := NewClientConfig()
+	c.BatchIncrement = 999
+	c.IdleTimeout = -1
+	c.WaitTimeout = 0
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}

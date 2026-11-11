@@ -1,10 +1,10 @@
 // Package discover 是模型层 —— 服务发现状态与地址广播的所有者。
 //
-// 拥有：发现器实例池、Redis 发现器的地址表与过期判定规则。
+// 拥有：发现器实例池、Redis 发现器的地址状态机与更新规则。
 // 提供：Directory.Get / CloseAll、静态与 Redis 两种实现。
 // 允许调用：foundation/port（经 StaticTable 窄接口取静态地址）、
-// foundation/resolver、model/registry（共享线缆协议与规则常量）。
-// 禁止：import 注册侧的具体实现包读单例；禁止自己定义一套 key 协议。
+// foundation/resolver、model/endpoint（共享协议，不依赖注册实现）。
+// 禁止：import 注册侧的具体实现包、自己定义一套 key 协议、在读取路径上删除注册记录。
 package discover
 
 import (
@@ -14,7 +14,7 @@ import (
 
 	"github.com/zly-app/component/redis"
 	"github.com/zly-app/grpc/foundation/port"
-	"github.com/zly-app/grpc/model/registry"
+	"github.com/zly-app/grpc/model/endpoint"
 )
 
 // Directory 独占发现器实例池。
@@ -36,8 +36,8 @@ func (d *Directory) SetRedisCreator(creator redis.Creator) {
 }
 
 // Get 按地址规格取（或创建）一个发现器。
-func (d *Directory) Get(ctx context.Context, spec registry.AddressSpec) (port.Discover, error) {
-	key := spec.Type + "/" + spec.Addr
+func (d *Directory) Get(ctx context.Context, spec endpoint.Spec) (port.Discover, error) {
+	key := spec.Type + "/" + spec.Component
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
@@ -47,13 +47,13 @@ func (d *Directory) Get(ctx context.Context, spec registry.AddressSpec) (port.Di
 
 	var v port.Discover
 	switch spec.Type {
-	case registry.TypeStatic:
+	case endpoint.TypeStatic:
 		v = staticDiscover{table: d.static}
-	case registry.TypeRedis:
+	case endpoint.TypeRedis:
 		if d.redisCreator == nil {
 			return nil, fmt.Errorf("创建发现器失败: redis creator 未注入（组合根未完成装配）")
 		}
-		rd, err := NewRedisDiscover(ctx, spec.Addr, d.redisCreator)
+		rd, err := NewRedisDiscover(ctx, spec.Component, d.redisCreator)
 		if err != nil {
 			return nil, fmt.Errorf("创建发现器失败: %w", err)
 		}

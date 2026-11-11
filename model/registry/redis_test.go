@@ -13,6 +13,7 @@ import (
 	"github.com/zly-app/component/redis"
 
 	"github.com/zly-app/grpc/foundation/addr"
+	"github.com/zly-app/grpc/model/endpoint"
 )
 
 // testTLSConfig 支持 rediss://：GRPC_TEST_REDIS_TLS=1 时启用 TLS。
@@ -34,7 +35,7 @@ type testCreator struct{ client redis.UniversalClient }
 
 func (c *testCreator) GetClient(string) (redis.UniversalClient, error) { return c.client, nil }
 func (c *testCreator) GetDefClient() (redis.UniversalClient, error)    { return c.client, nil }
-func (c *testCreator) Close()                                         {}
+func (c *testCreator) Close()                                          {}
 
 func newTestRegistry(t *testing.T) (*RedisRegistry, *rredis.Client) {
 	t.Helper()
@@ -80,7 +81,7 @@ func TestRedisRegisterWritesFieldWithTTL(t *testing.T) {
 	ctx := context.Background()
 
 	svc := uniqueServerName("reg")
-	key := RegKey(svc)
+	key := endpoint.RegKey(svc)
 	cleanupKey(t, client, key)
 
 	if err := r.Register(ctx, svc, &addr.Info{Name: "hello.pub", Endpoint: "10.0.0.1:3000", Weight: 200}); err != nil {
@@ -98,22 +99,22 @@ func TestRedisRegisterWritesFieldWithTTL(t *testing.T) {
 	if !ok {
 		t.Fatalf("field 必须等于 endpoint, 实际 %v", data)
 	}
-	reg := RegServer{}
-	if err := sonic.UnmarshalString(text, &reg); err != nil {
+	rec := endpoint.Record{}
+	if err := sonic.UnmarshalString(text, &rec); err != nil {
 		t.Fatal(err)
 	}
-	if reg.Endpoint != "10.0.0.1:3000" || reg.Weight != 200 {
-		t.Fatalf("记录内容不符: %+v", reg)
+	if rec.Endpoint != "10.0.0.1:3000" || rec.Weight != 200 {
+		t.Fatalf("记录内容不符: %+v", rec)
 	}
-	if reg.Name != "hello.pub@10.0.0.1:3000" {
-		t.Fatalf("Name 必须是「前缀@endpoint」形式: %q", reg.Name)
+	if rec.Name != "hello.pub@10.0.0.1:3000" {
+		t.Fatalf("Name 必须是「前缀@endpoint」形式: %q", rec.Name)
 	}
 
-	ttl, err := client.HTTL(ctx, key, RegField("10.0.0.1:3000")).Result()
+	ttl, err := client.HTTL(ctx, key, endpoint.Field("10.0.0.1:3000")).Result()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ttl) != 1 || ttl[0] <= RegistryExpire/2 {
+	if len(ttl) != 1 || ttl[0] <= endpoint.RecordTTL/2 {
 		t.Fatalf("注册必须带字段级 TTL, ttl=%v", ttl)
 	}
 }
@@ -124,8 +125,8 @@ func TestRedisRegisterIsIdempotentPerEndpoint(t *testing.T) {
 	ctx := context.Background()
 
 	svc := uniqueServerName("idem")
-	key := RegKey(svc)
-	field := RegField("10.0.0.9:3000")
+	key := endpoint.RegKey(svc)
+	field := endpoint.Field("10.0.0.9:3000")
 	cleanupKey(t, client, key)
 
 	for i := 0; i < 2; i++ {
@@ -141,22 +142,22 @@ func TestRedisRegisterIsIdempotentPerEndpoint(t *testing.T) {
 		t.Fatalf("同 endpoint 重复注册不应新增记录, 实际 %d 条", n)
 	}
 
-	reg := RegServer{}
+	rec := endpoint.Record{}
 	text, _ := client.HGet(ctx, key, field).Result()
-	_ = sonic.UnmarshalString(text, &reg)
-	if reg.Weight != 101 {
-		t.Fatalf("重复注册应覆盖为最新值, 实际 weight=%d", reg.Weight)
+	_ = sonic.UnmarshalString(text, &rec)
+	if rec.Weight != 101 {
+		t.Fatalf("重复注册应覆盖为最新值, 实际 weight=%d", rec.Weight)
 	}
 }
 
-// 续租就是重设同一字段的 TTL：不依赖读侧判断，也没有「记录已被删需要重建」的分支。
+// 续租就是重设同一字段的 TTL：不依赖读侧判断，成功路径没有「记录已被删需要重建」的副作用。
 func TestRedisLeaseRefreshesTTL(t *testing.T) {
 	r, client := newTestRegistry(t)
 	ctx := context.Background()
 
 	svc := uniqueServerName("lease")
-	key := RegKey(svc)
-	field := RegField("10.0.0.2:3000")
+	key := endpoint.RegKey(svc)
+	field := endpoint.Field("10.0.0.2:3000")
 	cleanupKey(t, client, key)
 
 	if err := r.Register(ctx, svc, &addr.Info{Endpoint: "10.0.0.2:3000"}); err != nil {
@@ -169,15 +170,73 @@ func TestRedisLeaseRefreshesTTL(t *testing.T) {
 		t.Fatalf("前置条件不符: 期望 TTL 已被压到 1s, 实际 %v", ttl)
 	}
 
-	if err := r.touch(ctx, svc, &RegServer{Name: field, Endpoint: field, Weight: 100}); err != nil {
-		t.Fatal(err)
-	}
+	r.leaseOne(ctx, svc, endpoint.Record{Name: field, Endpoint: field, Weight: 100})
+
 	ttl, err := client.HTTL(ctx, key, field).Result()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ttl) != 1 || ttl[0] < RegistryExpire-1 {
-		t.Fatalf("续租后 TTL 应回到接近 %ds, 实际 %v", RegistryExpire, ttl)
+	if len(ttl) != 1 || ttl[0] < endpoint.RecordTTL-1 {
+		t.Fatalf("续租后 TTL 应回到接近 %ds, 实际 %v", endpoint.RecordTTL, ttl)
+	}
+}
+
+// 崩溃恢复：记录被 TTL 清掉后，续租必须重建并补发注册信号。
+// 否则发现侧（纯只读）要等下一轮主动重发现，最长 30s 看不到这个活着的实例。
+func TestRedisLeaseRebuildsExpiredRecordAndPublishes(t *testing.T) {
+	r, client := newTestRegistry(t)
+	ctx := context.Background()
+
+	svc := uniqueServerName("rebuild")
+	key := endpoint.RegKey(svc)
+	field := endpoint.Field("10.0.0.5:3000")
+	cleanupKey(t, client, key)
+
+	// 先订阅再注册：Pub/Sub 不保留离线消息，注册信号必须在订阅建立之后发出。
+	sub := client.Subscribe(ctx, endpoint.SignalKey(svc))
+	defer func() { _ = sub.Close() }()
+	if _, err := sub.Receive(ctx); err != nil {
+		t.Fatalf("订阅信号失败: %v", err)
+	}
+
+	if err := r.Register(ctx, svc, &addr.Info{Endpoint: "10.0.0.5:3000", Weight: 100}); err != nil {
+		t.Fatal(err)
+	}
+
+	waitSignal := func() bool {
+		timeout := time.After(3 * time.Second)
+		for {
+			select {
+			case msg := <-sub.Channel():
+				sig := endpoint.Signal{}
+				if err := sonic.UnmarshalString(msg.Payload, &sig); err != nil || sig.Record == nil {
+					continue
+				}
+				if !sig.IsUnReg && sig.Record.Endpoint == field {
+					return true
+				}
+			case <-timeout:
+				return false
+			}
+		}
+	}
+
+	if !waitSignal() {
+		t.Fatal("未收到注册信号")
+	}
+
+	// 模拟「记录已过期」：删掉字段，续租走 FXX 会返回 0。
+	if err := client.HDel(ctx, key, field).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	r.leaseOne(ctx, svc, endpoint.Record{Name: field, Endpoint: field, Weight: 100})
+
+	if n, err := client.HLen(ctx, key).Result(); err != nil || n != 1 {
+		t.Fatalf("续租必须重建过期记录, 实际 n=%d err=%v", n, err)
+	}
+	if !waitSignal() {
+		t.Fatal("重建记录后必须补发注册信号")
 	}
 }
 
@@ -187,8 +246,8 @@ func TestRedisFieldExpiresWithoutDelete(t *testing.T) {
 	ctx := context.Background()
 
 	svc := uniqueServerName("expire")
-	key := RegKey(svc)
-	field := RegField("10.0.0.3:3000")
+	key := endpoint.RegKey(svc)
+	field := endpoint.Field("10.0.0.3:3000")
 	cleanupKey(t, client, key)
 
 	if err := r.Register(ctx, svc, &addr.Info{Endpoint: "10.0.0.3:3000"}); err != nil {
@@ -220,10 +279,10 @@ func TestRedisUnregisterRemovesFieldAndPublishes(t *testing.T) {
 	ctx := context.Background()
 
 	svc := uniqueServerName("unreg")
-	key := RegKey(svc)
+	key := endpoint.RegKey(svc)
 	cleanupKey(t, client, key)
 
-	sub := client.Subscribe(ctx, SignalKey(svc))
+	sub := client.Subscribe(ctx, endpoint.SignalKey(svc))
 	defer func() { _ = sub.Close() }()
 	if _, err := sub.Receive(ctx); err != nil {
 		t.Fatalf("订阅信号失败: %v", err)
@@ -249,11 +308,11 @@ func TestRedisUnregisterRemovesFieldAndPublishes(t *testing.T) {
 			if !ok {
 				t.Fatal("信号通道已关闭")
 			}
-			sig := RegSignal{}
-			if err := sonic.UnmarshalString(msg.Payload, &sig); err != nil || sig.Reg == nil {
+			sig := endpoint.Signal{}
+			if err := sonic.UnmarshalString(msg.Payload, &sig); err != nil || sig.Record == nil {
 				continue
 			}
-			if sig.IsUnReg && sig.Reg.Endpoint == "10.0.0.4:3000" {
+			if sig.IsUnReg && sig.Record.Endpoint == "10.0.0.4:3000" {
 				return
 			}
 		case <-timeout:

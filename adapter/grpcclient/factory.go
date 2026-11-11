@@ -24,8 +24,8 @@ import (
 	"github.com/zly-app/grpc/foundation/port"
 	"github.com/zly-app/grpc/model/config"
 	"github.com/zly-app/grpc/model/discover"
+	"github.com/zly-app/grpc/model/endpoint"
 	"github.com/zly-app/grpc/model/hooks"
-	"github.com/zly-app/grpc/model/registry"
 )
 
 // Factory 装配一条客户端连接所需的全部 transport 依赖。
@@ -43,8 +43,11 @@ func NewFactory(app core.IApp, d *discover.Directory, b port.Balancer, h *hooks.
 
 // Create 实现业务层的 ConnFactory port：发现器 → 均衡器 → 连接池。
 func (f *Factory) Create(ctx context.Context, name string, conf *config.ClientConfig) (port.Conn, error) {
-	spec := registry.ParseAddress(conf.Address)
-	d, err := f.discover.Get(ctx, spec)
+	src, err := endpoint.ParseSource(conf.Address)
+	if err != nil {
+		return nil, err
+	}
+	d, err := f.discover.Get(ctx, src.Spec())
 	if err != nil {
 		return nil, fmt.Errorf("获取发现器失败: %w", err)
 	}
@@ -57,7 +60,7 @@ func (f *Factory) Create(ctx context.Context, name string, conf *config.ClientCo
 		return nil, fmt.Errorf("获取均衡器失败: %w", err)
 	}
 
-	target := fmt.Sprintf("%s:///%s", spec.Type, name)
+	target := fmt.Sprintf("%s:///%s", src.Type, name)
 	var proxy utils.ISocks5Proxy
 	if conf.ProxyAddress != "" {
 		p, err := utils.NewSocks5Proxy(conf.ProxyAddress)

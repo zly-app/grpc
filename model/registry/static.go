@@ -10,10 +10,14 @@ import (
 	"github.com/zly-app/grpc/foundation/addr"
 	"github.com/zly-app/grpc/foundation/port"
 	fresolver "github.com/zly-app/grpc/foundation/resolver"
+	"github.com/zly-app/grpc/model/endpoint"
 )
 
 // StaticTable 是进程内静态地址表，由组合根创建唯一实例并同时注入注册侧与发现侧。
 // 数据独占：address 与 builders 只由本表读写。
+//
+// 注册按 endpoint 幂等：同一 endpoint 重复注册只更新值（权重/名字），不会新增地址。
+// 否则客户端重试创建连接时会重复入表，权重翻倍、轮询重复命中同一实例。
 type StaticTable struct {
 	mx       sync.RWMutex
 	address  map[string][]*addr.Info
@@ -33,12 +37,26 @@ func (s *StaticTable) Register(_ context.Context, serverName string, a *addr.Inf
 	if a == nil || a.Endpoint == "" {
 		return fmt.Errorf("静态注册地址为空: %s", serverName)
 	}
+	info := *a // 值拷贝：注册后调用方改原对象不影响表内状态
 
 	s.mx.Lock()
-	s.address[serverName] = append(s.address[serverName], a)
+	list := s.address[serverName]
+	replaced := false
+	for i, v := range list {
+		if v.Endpoint == info.Endpoint {
+			list[i] = &info
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		list = append(list, &info)
+	}
+	s.address[serverName] = list
+
 	b, ok := s.builders[serverName]
 	if !ok {
-		b = fresolver.NewBuilderWithScheme(TypeStatic)
+		b = fresolver.NewBuilderWithScheme(endpoint.TypeStatic)
 		s.builders[serverName] = b
 	}
 	state := s.stateOf(serverName)
@@ -66,7 +84,7 @@ func (s *StaticTable) Builder(_ context.Context, serverName string) (gresolver.B
 	s.mx.Lock()
 	b, ok := s.builders[serverName]
 	if !ok {
-		b = fresolver.NewBuilderWithScheme(TypeStatic)
+		b = fresolver.NewBuilderWithScheme(endpoint.TypeStatic)
 		s.builders[serverName] = b
 	}
 	state := s.stateOf(serverName)

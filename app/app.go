@@ -11,7 +11,6 @@ package app
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -32,6 +31,7 @@ import (
 	"github.com/zly-app/grpc/model/config"
 	"github.com/zly-app/grpc/model/connreg"
 	"github.com/zly-app/grpc/model/discover"
+	"github.com/zly-app/grpc/model/endpoint"
 	"github.com/zly-app/grpc/model/hashkey"
 	"github.com/zly-app/grpc/model/hooks"
 	"github.com/zly-app/grpc/model/registry"
@@ -285,13 +285,12 @@ func (a *App) makeConn(name string) (port.Conn, error) {
 	}
 
 	// 静态地址由业务层经窄接口注入唯一的地址表，不再直写注册侧单例。
-	spec := registry.ParseAddress(conf.Address)
-	if spec.Type == registry.TypeStatic && spec.Addr != "" {
-		for _, s := range strings.Split(spec.Addr, ",") {
-			s = strings.TrimSpace(s)
-			if s == "" {
-				continue
-			}
+	src, err := endpoint.ParseSource(conf.Address)
+	if err != nil {
+		return nil, err
+	}
+	if src.Type == endpoint.TypeStatic {
+		for _, s := range src.Addresses {
 			info, err := addr.Parse(s)
 			if err != nil {
 				return nil, err

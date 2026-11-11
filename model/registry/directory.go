@@ -7,6 +7,7 @@ import (
 
 	"github.com/zly-app/component/redis"
 	"github.com/zly-app/grpc/foundation/port"
+	"github.com/zly-app/grpc/model/endpoint"
 )
 
 // Directory 独占注册器实例池：type/addr → port.Registry。
@@ -29,8 +30,8 @@ func (d *Directory) SetRedisCreator(creator redis.Creator) {
 }
 
 // Get 按地址规格取（或创建）一个注册器。
-func (d *Directory) Get(ctx context.Context, spec AddressSpec) (port.Registry, error) {
-	key := spec.Type + "/" + spec.Addr
+func (d *Directory) Get(ctx context.Context, spec endpoint.Spec) (port.Registry, error) {
+	key := spec.Type + "/" + spec.Component
 
 	d.mx.Lock()
 	defer d.mx.Unlock()
@@ -40,13 +41,13 @@ func (d *Directory) Get(ctx context.Context, spec AddressSpec) (port.Registry, e
 
 	var r port.Registry
 	switch spec.Type {
-	case TypeStatic:
+	case endpoint.TypeStatic:
 		r = d.static
-	case TypeRedis:
+	case endpoint.TypeRedis:
 		if d.redisCreator == nil {
 			return nil, fmt.Errorf("创建注册器失败: redis creator 未注入（组合根未完成装配）")
 		}
-		rr, err := NewRedisRegistry(ctx, spec.Addr, d.redisCreator)
+		rr, err := NewRedisRegistry(ctx, spec.Component, d.redisCreator)
 		if err != nil {
 			return nil, fmt.Errorf("创建注册器失败: %w", err)
 		}

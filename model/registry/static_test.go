@@ -79,6 +79,36 @@ func TestRegisterBroadcastsImmediately(t *testing.T) {
 	}
 }
 
+// 同一 endpoint 重复注册必须幂等：客户端重试创建连接会重复调用 Register，
+// 追加语义会让地址重复入表，表现为权重翻倍、轮询重复命中同一实例。
+func TestRegisterUpsertsSameEndpoint(t *testing.T) {
+	s := NewStaticTable()
+	ctx := context.Background()
+
+	if err := s.Register(ctx, "svc", &addr.Info{Name: "a", Endpoint: "10.0.0.1:1", Weight: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Register(ctx, "svc", &addr.Info{Name: "a", Endpoint: "10.0.0.1:1", Weight: 300}); err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := s.Builder(ctx, "svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cc := &recordingCC{}
+	if _, err := b.Build(gresolver.Target{}, cc, gresolver.BuildOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	state := cc.last()
+	if len(state.Addresses) != 1 {
+		t.Fatalf("同 endpoint 只应保留一条地址, 实际 %d", len(state.Addresses))
+	}
+	if w := addr.Get(state.Addresses[0]).Weight; w != 300 {
+		t.Fatalf("重复注册应更新为最新权重, 实际 %d", w)
+	}
+}
+
 func TestUnregisterBroadcastsEmpty(t *testing.T) {
 	s := NewStaticTable()
 	ctx := context.Background()
@@ -100,31 +130,5 @@ func TestRegisterRejectsEmptyAddress(t *testing.T) {
 	s := NewStaticTable()
 	if err := s.Register(context.Background(), "svc", nil); err == nil {
 		t.Fatal("空地址注册应显式报错")
-	}
-}
-
-func TestParseAddress(t *testing.T) {
-	cases := []struct {
-		in        string
-		typ, addr string
-	}{
-		{"", TypeStatic, ""},
-		{"static", TypeStatic, ""},
-		{"localhost:3000", TypeStatic, "localhost:3000"},
-		{"redis://myredis", TypeRedis, "myredis"},
-		{"REDIS://myredis", TypeRedis, "myredis"},
-	}
-	for _, c := range cases {
-		got := ParseAddress(c.in)
-		if got.Type != c.typ || got.Addr != c.addr {
-			t.Fatalf("ParseAddress(%q) = %+v, want {%s %s}", c.in, got, c.typ, c.addr)
-		}
-	}
-}
-
-func TestProtocolKeysAreShared(t *testing.T) {
-	if RegKey("svc") != KeyServerReg+"svc" || SignalKey("svc") != KeyRegSignal+"svc" ||
-		RegField(" 10.0.0.1:3000 ") != "10.0.0.1:3000" {
-		t.Fatal("注册/发现共享的 key 协议不一致")
 	}
 }
