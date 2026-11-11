@@ -3,7 +3,7 @@
 // 拥有：ServeMux、http.Server、CORS 与响应包装格式。
 // 提供：New / Mux / StartGateway / Close / Conn。
 // 允许调用：foundation/ctxkey、foundation/wire、model/config、usecase.Forward、zapp core/filter。
-// 禁止：判定路由规则（归 model/route）、持有客户端连接集合、直读组合根私有配置。
+// 禁止：判定 hashKey 规则（归 model/hashkey）、持有客户端连接集合、直读组合根私有配置。
 package httpgw
 
 import (
@@ -73,7 +73,7 @@ func New(app core.IApp, conf *config.GatewayConfig, forward *usecase.Forward,
 // Mux 返回网关 mux，供业务代码注册 pb handler。
 func (g *Gateway) Mux() *runtime.ServeMux { return g.mux }
 
-// Conn 返回一个经路由规则注入 hashKey 的客户端连接。
+// Conn 返回一个按 hashKey 规则注入 key 的客户端连接。
 func (g *Gateway) Conn(name string) grpc.ClientConnInterface {
 	return &Conn{forward: g.forward, name: name}
 }

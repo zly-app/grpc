@@ -22,7 +22,7 @@
 | 层 | 包 | 职责 |
 |---|---|---|
 | 0 底座 | `foundation/{addr,ctxkey,wire,port,resolver}` | 纯机制与线缆协议，无业务语义 |
-| 1–2 模型 | `model/{config,code,balance,registry,discover,route,hooks,connreg,serverreg}` | 各自独占数据与规则，横向调用只走 port |
+| 1–2 模型 | `model/{config,code,balance,registry,discover,hashkey,hooks,connreg,serverreg}` | 各自独占数据与规则，横向调用只走 port |
 | 3 业务层 | `usecase` | Serve / Dial / Forward 三个用例，只编排不藏规则 |
 | 4 接口层 | `adapter/{grpcserver,grpcclient,httpgw}` | 协议适配，禁止业务规则 |
 | 5 组合根 | `app` | 唯一装配点：构造全部模型并注入 port |
@@ -487,8 +487,16 @@ services:
       CloseWait: 3 # 关闭前等待处理时间，单位秒
       CorsAllowAll: true # 允许全局跨域
 
-      Route: # 路由配置
+      HashKey: # 一致性 hash key 规则，可省略
+         ByHeader: x-user-id # 默认取哪个请求头；省略则不注入 hashKey
+         Rules: # 按 path 覆盖默认来源
+            - Path: /hello/say # grpc-gateway 注册的路径模板
+              ByHeader: x-hash-key
 ```
+
+`HashKey` 决定网关用哪个请求头的值作为一致性 hash 的 key：规则命中优先于默认；
+规则里 `ByHeader` 留空表示该 path 显式不参与 hash；`Path` 必须以 `/` 开头且不可重复，
+配置错误启动即失败。只有 `weight_hash` / `weight_consistent_hash` 均衡器会真正使用该 key。
 
 生成 `swagger`
 

@@ -6,25 +6,25 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/zly-app/grpc/foundation/ctxkey"
-	"github.com/zly-app/grpc/model/route"
+	"github.com/zly-app/grpc/model/hashkey"
 )
 
 // Forward 是「HTTP 请求转发为 gRPC 调用」用例：
-// 按路由模型判定 hashKey，再委托 Dial 完成调用链。
+// 按 hashKey 规则取出一致性 hash 的 key，再委托 Dial 完成调用链。
 type Forward struct {
-	dial   *Dial
-	routes *route.Table
+	dial    *Dial
+	hashKey *hashkey.Table
 }
 
 // NewForward 装配用例。
-func NewForward(d *Dial, r *route.Table) *Forward {
-	return &Forward{dial: d, routes: r}
+func NewForward(d *Dial, hk *hashkey.Table) *Forward {
+	return &Forward{dial: d, hashKey: hk}
 }
 
-// Invoke 由接口层传入 HTTP path；path 取不到时按「无路由规则」显式处理。
+// Invoke 由接口层传入 grpc-gateway 的路径模板；未命中规则时不注入 hashKey。
 func (f *Forward) Invoke(ctx context.Context, name, method, path string,
 	args, reply interface{}, opts ...grpc.CallOption) error {
-	if header, ok := f.routes.HeaderFor(path); ok {
+	if header, ok := f.hashKey.HeaderFor(path); ok {
 		gd := ctxkey.GatewayDataFromIncoming(ctx)
 		if gd != nil && gd.Headers != nil {
 			if key := gd.Headers.Get(header); key != "" {

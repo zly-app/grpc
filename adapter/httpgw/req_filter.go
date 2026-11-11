@@ -14,7 +14,7 @@ import (
 )
 
 // reqFilter 把 HTTP 请求翻译成横切上下文，并接入 zapp 的服务端过滤器链。
-// 这里没有业务规则：路由判定在 model/route，调用编排在 usecase.Forward。
+// 这里没有业务规则：hashKey 判定在 model/hashkey，调用编排在 usecase.Forward。
 func (g *Gateway) reqFilter(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

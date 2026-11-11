@@ -67,3 +67,37 @@ func TestGatewayConfigDefaults(t *testing.T) {
 		t.Fatalf("网关约束修正不符: %+v", c2)
 	}
 }
+
+func TestGatewayHashKeyConfigNormalize(t *testing.T) {
+	c := &GatewayConfig{HashKey: HashKeyConfig{
+		ByHeader: "  x-key  ",
+		Rules:    []HashKeyRule{{Path: "  /hello/say  ", ByHeader: " x-user-key "}},
+	}}
+	if err := c.Check(); err != nil {
+		t.Fatal(err)
+	}
+	if c.HashKey.ByHeader != "x-key" || c.HashKey.Rules[0].Path != "/hello/say" || c.HashKey.Rules[0].ByHeader != "x-user-key" {
+		t.Fatalf("未去除首尾空白: %+v", c.HashKey)
+	}
+}
+
+func TestGatewayHashKeyConfigInvalid(t *testing.T) {
+	cases := []struct {
+		name string
+		conf HashKeyConfig
+	}{
+		{"规则缺少 Path", HashKeyConfig{Rules: []HashKeyRule{{ByHeader: "x-key"}}}},
+		{"Path 不以 / 开头", HashKeyConfig{Rules: []HashKeyRule{{Path: "hello", ByHeader: "x-key"}}}},
+		{"Path 重复", HashKeyConfig{Rules: []HashKeyRule{{Path: "/p", ByHeader: "a"}, {Path: "/p", ByHeader: "b"}}}},
+		{"默认头名非法", HashKeyConfig{ByHeader: "x key"}},
+		{"规则头名非法", HashKeyConfig{Rules: []HashKeyRule{{Path: "/p", ByHeader: "x:key"}}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &GatewayConfig{HashKey: tc.conf}
+			if err := c.Check(); err == nil {
+				t.Fatalf("应判为配置错误: %+v", tc.conf)
+			}
+		})
+	}
+}

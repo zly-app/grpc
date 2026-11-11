@@ -6,6 +6,9 @@
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/zly-app/zapp/core"
 
 	"github.com/zly-app/grpc/model/balance"
@@ -170,18 +173,73 @@ func (c *ClientConfig) Check() error {
 	return nil
 }
 
-// RouteConfig 是一条网关路由的配置项；规则本体在 model/route。
-type RouteConfig struct {
-	Path            string
-	HashKeyByHeader string
+// HashKeyConfig 拥有网关 hashKey 的取值规则。
+//
+// 语义：网关把某个请求头的值作为一致性 hash 的 key，交给负载均衡器选实例。
+// ByHeader 是默认来源；Rules 按 path 覆盖它，命中且 ByHeader 为空的规则表示
+// 该 path 显式不参与 hash。path 取 grpc-gateway 注册的路径模板，不是原始 URL。
+type HashKeyConfig struct {
+	ByHeader string
+	Rules    []HashKeyRule
 }
 
-// GatewayConfig 拥有网关监听与跨域的规则。
+// HashKeyRule 覆盖单条 path 的 hashKey 来源；规则本体在 model/hashkey。
+type HashKeyRule struct {
+	Path     string
+	ByHeader string
+}
+
+// Check 规范空白并拒绝不合法的规则：配置错误必须在启动期暴露，不能拖到运行期静默失效。
+func (c *HashKeyConfig) Check() error {
+	c.ByHeader = strings.TrimSpace(c.ByHeader)
+	if c.ByHeader != "" && !validHeaderName(c.ByHeader) {
+		return fmt.Errorf("HashKey.ByHeader 不是合法的 HTTP 头名: %q", c.ByHeader)
+	}
+	seen := make(map[string]struct{}, len(c.Rules))
+	for i := range c.Rules {
+		r := &c.Rules[i]
+		r.Path = strings.TrimSpace(r.Path)
+		r.ByHeader = strings.TrimSpace(r.ByHeader)
+		if r.Path == "" {
+			return fmt.Errorf("HashKey.Rules[%d] 缺少 Path", i)
+		}
+		if !strings.HasPrefix(r.Path, "/") {
+			return fmt.Errorf("HashKey.Rules[%d].Path 必须以 / 开头: %q", i, r.Path)
+		}
+		if r.ByHeader != "" && !validHeaderName(r.ByHeader) {
+			return fmt.Errorf("HashKey.Rules[%d].ByHeader 不是合法的 HTTP 头名: %q", i, r.ByHeader)
+		}
+		if _, ok := seen[r.Path]; ok {
+			return fmt.Errorf("HashKey.Rules 中 Path 重复: %q", r.Path)
+		}
+		seen[r.Path] = struct{}{}
+	}
+	return nil
+}
+
+// validHeaderName 按 RFC 7230 的 token 规则校验头名，挡住拼写错误与非法字符。
+func validHeaderName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case strings.ContainsRune("!#$%&'*+-.^_`|~", rune(c)):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// GatewayConfig 拥有网关监听、跨域与 hashKey 的规则。
 type GatewayConfig struct {
 	Bind         string
 	CloseWait    int
 	CorsAllowAll bool
-	Route        []RouteConfig
+	HashKey      HashKeyConfig
 }
 
 const (
@@ -198,7 +256,7 @@ func NewGatewayConfig() *GatewayConfig {
 	}
 }
 
-// Check 修正不满足约束的取值。
+// Check 修正不满足约束的取值，并把不合法的 hashKey 规则判为错误。
 func (c *GatewayConfig) Check() error {
 	if c.Bind == "" {
 		c.Bind = defGatewayBind
@@ -206,5 +264,5 @@ func (c *GatewayConfig) Check() error {
 	if c.CloseWait < 1 {
 		c.CloseWait = defGatewayCloseWait
 	}
-	return nil
+	return c.HashKey.Check()
 }

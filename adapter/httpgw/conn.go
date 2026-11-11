@@ -10,7 +10,7 @@ import (
 	"github.com/zly-app/grpc/usecase"
 )
 
-// Conn 把 HTTP 请求转交给 Forward 用例；path 取不到时按「无路由规则」处理。
+// Conn 把 HTTP 请求转交给 Forward 用例；path 取不到时按「无 hashKey 规则」处理。
 type Conn struct {
 	forward *usecase.Forward
 	name    string

@@ -36,7 +36,7 @@ grpc/
 │   ├── balance/                均衡策略表（表驱动）+ Picker
 │   ├── registry/               注册中心 + Redis 共享协议 + 静态地址表 + 目录
 │   ├── discover/               发现器目录 + static/redis 实现
-│   ├── route/                  网关路由表
+│   ├── hashkey/                网关 hashKey 规则表（path → 请求头）
 │   ├── hooks/                  客户端 hook 表
 │   ├── connreg/                客户端连接集合
 │   └── serverreg/              服务声明表与重名规则
@@ -104,7 +104,7 @@ app.Run()
 | `(*App).Server(name, hooks...) grpc.ServiceRegistrar` | 声明具名 server；同名重复声明 panic |
 | `(*App).ServerDesc(hooks...)` | 以 pb `ServiceName` 命名 |
 | `(*App).ClientConn(name) grpc.ClientConnInterface` | 客户端连接（按需建立） |
-| `(*App).GatewayConn(name)` | 注入网关路由 hashKey 的连接 |
+| `(*App).GatewayConn(name)` | 按网关 hashKey 规则注入 key 的连接 |
 | `(*App).Mux() *runtime.ServeMux` | 网关 mux |
 | `(*App).Close()` | 统一关闭，幂等 |
 
@@ -139,7 +139,7 @@ app.Run()
 | 包路径 `server/` `client/` `gateway/` `balance/` `registry/` `discover/` `pkg/` | 见第 2 节五层目录 |
 | `init()` 隐式注册、空导入启用实现 | 组合根显式 `Install()` 与注入 |
 
-配置 key 与 YAML 结构**未变**。
+配置 key 与 YAML 结构仅在网关 hashKey 规则上变更（旧 `Route` → `HashKey`，见 6.3），其余未变。
 
 ---
 
@@ -176,7 +176,24 @@ app.Run()
 | 字段 | 默认 |
 |---|---|
 | `Bind` / `CloseWait` / `CorsAllowAll` | `:8080` / 3s / true |
-| `Route` | `[]RouteConfig{Path, HashKeyByHeader}`，规则由 `model/route` 持有 |
+| `HashKey.ByHeader` | 空（不注入 hashKey） |
+| `HashKey.Rules` | 空；`[]HashKeyRule{Path, ByHeader}`，规则由 `model/hashkey` 持有 |
+
+```yaml
+services:
+  grpc-gateway:
+    Bind: :8080
+    HashKey:
+      ByHeader: x-user-id        # 默认来源：未单独声明的 path 都取它
+      Rules:
+        - Path: /hello/say       # grpc-gateway 注册的路径模板，不是原始 URL
+          ByHeader: x-hash-key   # 覆盖默认来源
+        - Path: /hello/ping      # ByHeader 留空：该 path 显式不参与 hash
+```
+
+取值语义：规则命中优先；规则头名为空表示显式关闭，**不回落默认来源**；未命中规则用默认来源。
+头名在启动期按 RFC 7230 token 校验，`Path` 必须以 `/` 开头且不可重复，配置错误直接启动失败。
+只有 `weight_hash` / `weight_consistent_hash` 均衡器会真正使用该 key。
 
 ---
 
@@ -270,7 +287,7 @@ go build ./... ; go test ./...
 ```
 
 单测覆盖：`foundation/addr`、`foundation/ctxkey`、`foundation/resolver`（会停测试）、
-`model/{config,code,balance,route,hooks,connreg,serverreg,registry}`、`app`、`example/client`。
+`model/{config,code,balance,hashkey,hooks,connreg,serverreg,registry}`、`app`、`example/client`。
 
 Redis 集成测试（`TestRedis*`）用环境变量门控，默认 skip；需要真实 Redis 8.x（miniredis 不支持字段级 TTL）：
 

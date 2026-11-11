@@ -32,9 +32,9 @@ import (
 	"github.com/zly-app/grpc/model/config"
 	"github.com/zly-app/grpc/model/connreg"
 	"github.com/zly-app/grpc/model/discover"
+	"github.com/zly-app/grpc/model/hashkey"
 	"github.com/zly-app/grpc/model/hooks"
 	"github.com/zly-app/grpc/model/registry"
-	"github.com/zly-app/grpc/model/route"
 	"github.com/zly-app/grpc/model/serverreg"
 	"github.com/zly-app/grpc/usecase"
 )
@@ -102,18 +102,16 @@ type App struct {
 	regDir       *registry.Directory
 	discDir      *discover.Directory
 	redisCreator redis.Creator
-	balancer  *balance.Table
-	hookTable *hooks.Table
-	decls     *serverreg.Table
-	conns     *connreg.Collection
-	routes    *route.Table
-	mapper    code.Mapper
+	balancer     *balance.Table
+	hookTable    *hooks.Table
+	decls        *serverreg.Table
+	conns        *connreg.Collection
+	mapper       code.Mapper
 
 	serverBuilder *grpcserver.Builder
 	clientFactory *grpcclient.Factory
 	serve         *usecase.Serve
 	dial          *usecase.Dial
-	forward       *usecase.Forward
 	gateway       *httpgw.Gateway
 
 	zappApp    core.IApp
@@ -149,12 +147,10 @@ func New(opts ...Option) *App {
 	}
 	rt.hookTable.AddAllClient(o.allClientHooks...)
 	rt.decls = serverreg.New(o.serverHooks...)
-	rt.routes = route.New(nil)
 
 	// 用例
 	rt.conns = connreg.New(rt.makeConn)
 	rt.dial = usecase.NewDial(rt.conns)
-	rt.forward = usecase.NewForward(rt.dial, rt.routes)
 
 	// 与 zapp 生命周期接壤：creator 只做委托，装配在 AfterInitialize 完成
 	creatorOnce.Do(func() {
@@ -211,7 +207,7 @@ func (a *App) ClientConn(name string) grpc.ClientConnInterface {
 	return a.dial.Conn(name)
 }
 
-// GatewayConn 返回注入网关路由 hashKey 的客户端连接。
+// GatewayConn 返回按网关 hashKey 规则注入 key 的客户端连接。
 func (a *App) GatewayConn(name string) grpc.ClientConnInterface {
 	if a.gateway == nil {
 		panic("grpc 网关未装配：请把 Options() 传给 zapp.NewApp 并以 WithGateway 启用")
@@ -262,8 +258,7 @@ func (a *App) attach(z core.IApp) {
 		if err := gwConf.Check(); err != nil {
 			panic(fmt.Errorf("grpc网关服务配置检查失败: %w", err))
 		}
-		a.routes = route.New(gwConf.Route)
-		a.forward = usecase.NewForward(a.dial, a.routes)
+		forward := usecase.NewForward(a.dial, hashkey.New(gwConf.HashKey))
 
 		a.serverBuilder = grpcserver.NewBuilder(z)
 		a.clientFactory = grpcclient.NewFactory(z, a.discDir, a.balancer, a.hookTable)
@@ -271,7 +266,7 @@ func (a *App) attach(z core.IApp) {
 			return readServerConfig(z, name)
 		})
 
-		gw, err := httpgw.New(z, gwConf, a.forward, a.opt.extractIP)
+		gw, err := httpgw.New(z, gwConf, forward, a.opt.extractIP)
 		if err != nil {
 			panic(fmt.Errorf("创建grpc网关服务失败: %w", err))
 		}
