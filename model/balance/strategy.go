@@ -290,10 +290,29 @@ func (s *leastRequestStrategy) Pick(string) (*instance, error) {
 	}
 
 	best, cand := insts[i], insts[j]
-	if loadOf(cand) < loadOf(best) {
-		best = cand
+	if lb, lc := loadOf(best), loadOf(cand); lb != lc {
+		if lc < lb {
+			return cand, nil
+		}
+		return best, nil
 	}
-	return best, nil
+
+	// 负载相同（低并发下通常都是 0）时按权重加权随机。
+	// 只比 in-flight 的话 PublishWeight 在低 QPS 场景完全失效——
+	// 实测权重 200:100 串行请求会退化成 1.03:1。
+	return pickWeighted(best, cand), nil
+}
+
+// pickWeighted 在 a、b 之间按权重随机。
+func pickWeighted(a, b *instance) *instance {
+	wa, wb := weightOf(a), weightOf(b)
+	if wa+wb == 0 {
+		return a
+	}
+	if rand.Uint32N(wa+wb) < wa {
+		return a
+	}
+	return b
 }
 
 func loadOf(i *instance) int64 {

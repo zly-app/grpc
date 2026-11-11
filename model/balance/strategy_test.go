@@ -193,6 +193,29 @@ func TestLeastRequestPrefersIdle(t *testing.T) {
 	}
 }
 
+// 低并发时所有实例的在途数都是 0，负载相等；此时必须按权重加权随机。
+// 只比 in-flight 的话 PublishWeight 在低 QPS 场景完全失效——真机实测权重 200:100
+// 串行请求会退化成 1.03:1。
+func TestLeastRequestWeightWhenIdle(t *testing.T) {
+	small := newFakeInst("10.0.0.1:3000", "node-small", 100)
+	big := newFakeInst("10.0.0.2:3000", "node-big", 300)
+
+	s := new(leastRequestStrategy)
+	s.Update([]*instance{small, big})
+
+	const n = 8000
+	hit := 0
+	for i := 0; i < n; i++ {
+		if mustPick(t, s, "") == small {
+			hit++
+		}
+	}
+	ratio := float64(hit) / float64(n)
+	if ratio < 0.20 || ratio > 0.30 {
+		t.Fatalf("在途数为 0 时权重 1:3 的低权重实例占比 = %.3f, 期望约 0.25", ratio)
+	}
+}
+
 // 同等在途数时，权重高的实例负载更低，应被优先选中。
 func TestLeastRequestHonorsWeight(t *testing.T) {
 	small := newFakeInst("10.0.0.1:3000", "node-small", 100)
