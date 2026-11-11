@@ -245,7 +245,7 @@ services:
 
 | 名称 | 规则 |
 |---|---|
-| `zly_least_request` | **默认**。P2C：随机抽两个实例，选「在途请求数 / 权重」更低的一个 |
+| `zly_least_request` | **默认**。P2C：随机抽两个实例，选「延迟 × (在途+1) / 权重」更低的；连续失败的实例先出局 |
 | `zly_round_robin` | 轮询 |
 | `zly_weight_random` | 加权随机 |
 | `zly_weight_hash` | 加权 hash，按 `WithHashKey` 匹配；**不是一致性 hash**，扩缩容会全量重映射 |
@@ -259,15 +259,16 @@ services:
 实现要点：
 
 - **P2C 带延迟与权重**：负载 = `latency * (inflight + 1) * 1000 / weight`。延迟是 EWMA 平滑
-  后的 RPC 耗时（每次向新值靠拢 1/5，失败请求不计入），让「低并发但慢」的节点也能被降权；
-  在途数体现瞬时排队；权重让同等条件下的高权重实例更占优。
+  后的 RPC 耗时（每次向新值靠拢 1/5），让「低并发但慢」的节点也能被降权；在途数体现瞬时排队；
+  权重让同等条件下的高权重实例更占优。节点类错误不进样本（快速失败会拉低延迟），业务错误
+  照常进样本——不记录它会让该实例永远「没有样本」，反而被当成最快的那个。
 - **冷启动与饿死保护**：没有延迟样本时退回「inflight / weight」，两者都没有（冷启动、串行低
   QPS）返回 0，由 Pick 的「负载相同」分支按权重加权随机——只比 in-flight 会让权重完全失效
   （真机实测 200:100 会退化成 1.03:1）。样本保鲜期 30s：节点被持续降权就再也拿不到新样本，
   旧的高延迟会永久保留把它饿死，过期后回到「未知」重新采样。
-- **连续失败优先出局**：失败请求不计入延迟样本，但要累加连续失败次数；达到 3 次后 Pick
-  先比失败级别、再比负载。否则「快速失败」的节点一直没有延迟样本，会被当成最快节点拿到
-  最多流量（真机实测：一个实例恒返回 `Internal`，200 次请求 199 次落到它上面）。成功一次清零。
+- **连续失败优先出局**：节点类错误累加连续失败次数，达到 3 次后 Pick 先比失败级别、再比负载。
+  否则「快速失败」的节点一直没有延迟样本，会被当成最快节点拿到最多流量（真机实测：一个实例
+  恒返回 `Internal`，200 次请求 199 次落到它上面）。成功一次或收到业务错误都会清零。
 - **只对节点问题降权**：`isNodeFailure` 认 `Unavailable` / `Internal` / `DeadlineExceeded` /
   `ResourceExhausted` / `DataLoss` / `Unknown`；业务错误（`InvalidArgument`、`NotFound`、
   `PermissionDenied`）和客户端取消不算，而且会清零之前的累积。判断走 `Unwrap` 链而不是
@@ -278,8 +279,8 @@ services:
 - **只有 P2C 采样延迟**：`picked(inst, measure)`，`measure=false` 用方法值、零分配；
   `measure=true` 用闭包捕获开始时间（每次 Pick 多一次堆分配，约 20ns，相对单请求 179µs
   可忽略）。其余策略保持 0 allocs。
-- **一致性 hash 用固定副本数**：`weight == DefWeight` 时 160 个虚拟节点，按权重等比缩放。
-  不做「权重即节点数」，避免调权重连带动环精度。
+- **一致性 hash 的副本数可调**：默认 `weight == DefWeight` 时 160 个虚拟节点，按权重等比缩放
+  （`SetRingReplicas` 可改）。不做「权重即节点数」，避免调权重连带动环精度。
 - **hash 类策略无 key 时降级为轮询**（不是随机），分布仍然均匀。
 - **balancer 自己实现**而不是用 `balancer/base`：base 每次子连接状态变化都重建 PickerBuilder，
   而轮询计数、hash 环、在途请求数必须活过重建。实例集合不变时不重建环。
@@ -298,7 +299,7 @@ services:
   不结束 RPC）；点名 `target` 但实例不在 Ready 集合里则回 `codes.Unavailable`。
 
 `WithTarget` / `WithHashKey` 经 `foundation/ctxkey` 隐式传播到 Picker，不逐参数透传。
-`PickResult.Done` 统一挂回调：登记/回收在途计数，为 P2C 提供观测（以后加 EWMA 也从这里挂）。
+`PickResult.Done` 统一挂回调：登记/回收在途计数，并为 P2C 采样延迟；其它策略不采样，保持零分配。
 
 ---
 
