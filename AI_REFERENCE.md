@@ -277,8 +277,8 @@ services:
   `balance.SetTuning(Tuning{SampleTTL, FailThreshold})`（样本保鲜期默认 30s、失败阈值默认 3 次）。
   进程级生效，建议启动期调用；没做成 YAML 是因为只有一个值、绝大多数场景不需要改。
 - **只有 P2C 采样延迟**：`picked(inst, measure)`，`measure=false` 用方法值、零分配；
-  `measure=true` 用闭包捕获开始时间（每次 Pick 多一次堆分配，约 20ns，相对单请求 179µs
-  可忽略）。其余策略保持 0 allocs。
+  `measure=true` 用闭包捕获开始时间（实测选点 16ns → 34ns，多一次 `time.Now` 和一次堆分配，
+  相对单请求 179µs 可忽略）。其余策略保持 0 allocs。
 - **一致性 hash 的副本数可调**：默认 `weight == DefWeight` 时 160 个虚拟节点，按权重等比缩放
   （`SetRingReplicas` 可改）。不做「权重即节点数」，避免调权重连带动环精度。
 - **hash 类策略无 key 时降级为轮询**（不是随机），分布仍然均匀。
