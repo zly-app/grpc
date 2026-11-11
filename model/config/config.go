@@ -137,7 +137,7 @@ func NewClientConfig() *ClientConfig {
 	}
 }
 
-// Check 修正不满足约束的取值，并拒绝已移除的旧配置键。
+// Check 修正不满足约束的取值，并在启动期把服务地址解析一遍。
 func (c *ClientConfig) Check() error {
 	if c.Address = strings.TrimSpace(c.Address); c.Address == "" {
 		c.Address = defClientAddress

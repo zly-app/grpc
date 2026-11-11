@@ -35,7 +35,7 @@ func WithClientHooks(name string, hs ...ClientHook) Option {
 }
 func WithAllClientHooks(hs ...ClientHook) Option { return app.WithAllClientHooks(hs...) }
 
-// WithoutErrCodeHook 关闭错误码规则的接壤装配。
+// WithoutErrCodeHook 关闭错误码规则的默认装配。
 func WithoutErrCodeHook() Option { return app.WithoutErrCodeHook() }
 
 // 常用类型别名。
