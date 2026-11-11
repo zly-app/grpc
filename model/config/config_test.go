@@ -52,11 +52,8 @@ func TestClientConfigDefaults(t *testing.T) {
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
-	if c.Address != "localhost:3000" || c.Balance != "weight_consistent_hash" {
+	if c.Address != "localhost:3000" || c.Balance != "zly_least_request" {
 		t.Fatalf("客户端默认值不符: %+v", c)
-	}
-	if c.MinIdle != 2 || c.MaxIdle != 4 || c.WaitTimeout != 5 || c.ConnectTimeout != 5 {
-		t.Fatalf("连接池默认值不符: %+v", c)
 	}
 }
 
@@ -90,19 +87,21 @@ func TestClientConfigAddress(t *testing.T) {
 	}
 }
 
-func TestClientConfigConstraints(t *testing.T) {
+// 去空白是配置层的职责：均衡器名字与凭证路径都不该带着空格进下游。
+func TestClientConfigTrim(t *testing.T) {
 	c := NewClientConfig()
-	c.BatchIncrement = 999
-	c.IdleTimeout = -1
-	c.WaitTimeout = 0
+	c.Balance = "  "
+	c.ProxyAddress = "  127.0.0.1:1080  "
+	c.TLSCertFile = "  /tmp/a.pem "
+	c.TLSDomain = "  svc.local "
 	if err := c.Check(); err != nil {
 		t.Fatal(err)
 	}
-	if c.MaxIdle != 4 || c.BatchIncrement != c.MaxIdle {
-		t.Fatalf("批次增量应被最大闲置数限制: %+v", c)
+	if c.Balance != "zly_least_request" {
+		t.Fatalf("空均衡器应回落默认值: %q", c.Balance)
 	}
-	if c.IdleTimeout != 0 || c.WaitTimeout != 5 {
-		t.Fatalf("超时约束不符: %+v", c)
+	if c.ProxyAddress != "127.0.0.1:1080" || c.TLSCertFile != "/tmp/a.pem" || c.TLSDomain != "svc.local" {
+		t.Fatalf("未去除首尾空白: %+v", c)
 	}
 }
 

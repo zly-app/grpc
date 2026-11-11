@@ -22,7 +22,11 @@ const (
 	WeightField = "weight"
 )
 
-const defWeight = uint16(100)
+// DefWeight 是地址未显式声明权重时的默认值。
+//
+// 权重 0 在下游均衡器里表示「忽略该实例」，所以「没有权重」必须由调用方
+// 显式回落到这个常量，不能让零值一路传下去。
+const DefWeight = uint16(100)
 
 type attributeKey struct{}
 
@@ -74,11 +78,15 @@ func Parse(s string) (*Info, error) {
 		name = u.Host
 	}
 
-	weight := defWeight
+	weight := DefWeight
 	if text := query.Get(WeightField); text != "" {
 		v, err := strconv.ParseUint(text, 10, 16)
 		if err != nil {
 			return nil, fmt.Errorf("无效的addr, weight无法解析: %v", err)
+		}
+		// 0 在均衡器里等于「把我从加权策略里摘掉」，配置写错不该静默生效。
+		if v == 0 {
+			return nil, fmt.Errorf("无效的addr, weight必须大于0: %v", text)
 		}
 		weight = uint16(v)
 	}

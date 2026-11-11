@@ -11,7 +11,7 @@
 - **Go**：1.24.1
 - **定位**：给 [zapp](https://github.com/zly-app/zapp) 提供 gRPC 服务端、客户端、HTTP 网关、服务注册与发现
 - **架构**：模型自组织架构（MSO），2026-11-09 按五层重建，**不兼容旧版公开 API**
-- **依赖**：`google.golang.org/grpc v1.75.1`、`grpc-gateway/v2 v2.27.3`、**`zapp v1.4.6`**、`component/redis` 伪版本、`zbalancer`、`connpool`、OTel
+- **依赖**：`google.golang.org/grpc v1.75.1`、`grpc-gateway/v2 v2.27.3`、**`zapp v1.4.6`**、`component/redis` 伪版本、OTel
 
 > **zapp 版本状态（2026-11-09 已发布）**：`go.mod` 指向 `v1.4.6`（MSO 重构后的首个 tag，指向 `8cf5a61`），**无 `replace`**。
 > 改造期间用临时 `replace` 指向本地 zapp 验证过 build/test 全绿，发布后正式回写；默认 Go 环境下
@@ -44,7 +44,7 @@ grpc/
 ├── usecase/                    3 业务层：Serve / Dial / Forward，只编排
 ├── adapter/                    4 接口层：协议适配，禁止业务规则
 │   ├── grpcserver/             gRPC Server transport + 拦截器 + TLS
-│   ├── grpcclient/             gRPC ClientConn transport + 连接池
+│   ├── grpcclient/             gRPC ClientConn transport（单条惰性连接，无池）
 │   └── httpgw/                 HTTP ServeMux + CORS + 请求过滤 + 响应重写
 ├── app/                        5 组合根：唯一装配点（New / Options / Service 适配）
 ├── grpc.go                     6 根包薄门面：只转发，无状态
@@ -139,6 +139,10 @@ app.Run()
 | `grpc.RegistryClientHook` / `RegistryAllClientHook` | `grpc.WithClientHooks(name, ...)` / `WithAllClientHooks(...)` |
 | 包路径 `server/` `client/` `gateway/` `balance/` `registry/` `discover/` `pkg/` | 见第 2 节五层目录 |
 | `init()` 隐式注册、空导入启用实现 | 组合根显式 `Install()` 与注入 |
+| 客户端连接池配置（`MinIdle` / `MaxActive` / …） | 已移除，连接池整个去掉（见 6.2） |
+| 均衡器名 `round_robin` / `weight_hash` / … | 加 `zly_` 前缀（见第 7 节） |
+| 默认均衡器 `weight_consistent_hash` | `zly_least_request`（P2C） |
+| `zbalancer` 依赖 | 已移除，策略全部内实现（见第 7 节） |
 
 配置 key 只在网关 hashKey 规则上有变更（旧 `Route` → `HashKey`，见 6.3）。
 注册/发现仍是一行来源字符串（`RegistryAddress` / `Address`），只是解析改严：未知 scheme、
@@ -170,13 +174,32 @@ app.Run()
 | 字段 | 默认 |
 |---|---|
 | `Address` | `localhost:3000`；`host:port[,host:port]` / `static` / `redis://<组件名>` |
-| `Balance` | `weight_consistent_hash` |
-| `WaitFirstConn` / `MinIdle` / `MaxIdle` / `MaxActive` | false / 2 / 4 / 10 |
-| `BatchIncrement` / `BatchShrink` | 由 MinIdle/MaxIdle 推导 |
-| `IdleTimeout` / `MaxConnLifetime` | 3600s（<1 视为不限制） |
-| `WaitTimeout` / `ConnectTimeout` / `CheckIdleInterval` | 5s / 5s / 5s |
-| `MaxWaitConnCount` | 2000（<1 视为不限制） |
+| `Balance` | `zly_least_request`（见第 7 节） |
 | `ProxyAddress` / `TLSCertFile` / `TLSDomain` | 空 |
+
+> **客户端没有连接池**。`WaitFirstConn` / `MinIdle` / `MaxIdle` / `MaxActive` / `BatchIncrement` /
+> `BatchShrink` / `IdleTimeout` / `WaitTimeout` / `MaxWaitConnCount` / `ConnectTimeout` /
+> `MaxConnLifetime` / `CheckIdleInterval` 全部移除，旧配置里写了也会被忽略。
+>
+> gRPC 的一条 `ClientConn` 本身并发安全、按 HTTP/2 流多路复用，每个实例一条 SubConn 由均衡器负责。
+> 再套一层「独占借还」的池会把并发压到池上限（旧默认 10），并把连接数放大成「池大小 × 实例数」。
+> 连接是惰性的：真正的 TCP 在第一次 RPC 时建立，失败由 gRPC 自身退避重连。
+
+**从 v0.6 升级要改的配置只有一类：显式写了策略名的 `Balance`。**
+
+| 情况 | 要不要改 | 说明 |
+|---|---|---|
+| 没写 `Balance` | 不用 | 自动用新默认 `zly_least_request`（P2C） |
+| 写了 `weight_consistent_hash` 等旧名 | **必须改** | 加 `zly_` 前缀；启动期即报错并给出新名 |
+| 网关依赖 `HashKey` 做用户粘性 | **必须显式配** | 默认 P2C **不读** hashKey，要粘性得写 `Balance: zly_weight_consistent_hash` |
+| 服务端 `services.grpc.<name>` | 不用 | `Bind` / `RegistryAddress` / `PublishWeight` / TLS 全部未变 |
+| 旧的 12 个连接池字段 | 不用 | 已被忽略，删不删都行，不报错 |
+
+写错策略名的报错长这样（启动期 panic，不是运行期悄悄失败）：
+
+```
+grpc客户端 "hello" 配置错误: balancer 已改名: "weight_consistent_hash" → "zly_weight_consistent_hash"（v0.7.0 起策略名统一加 zly_ 前缀）
+```
 
 ```yaml
 services:
@@ -213,7 +236,8 @@ services:
 
 取值语义：规则命中优先；规则头名为空表示显式关闭，**不回落默认来源**；未命中规则用默认来源。
 头名在启动期按 RFC 7230 token 校验，`Path` 必须以 `/` 开头且不可重复，配置错误直接启动失败。
-只有 `weight_hash` / `weight_consistent_hash` 均衡器会真正使用该 key。
+只有 `zly_weight_hash` / `zly_weight_consistent_hash` 会用这个 key；默认的 `zly_least_request` 与
+`zly_round_robin`、`zly_weight_random` 不读它（取了也不影响选点）。
 
 ---
 
@@ -221,13 +245,42 @@ services:
 
 | 名称 | 规则 |
 |---|---|
-| `round_robin` | 轮询 |
-| `weight_random` | 加权随机 |
-| `weight_hash` | 加权 hash，按 `WithHashKey` 匹配 |
-| `weight_consistent_hash` | 加权一致性 hash（默认），无 key 时降级 |
+| `zly_least_request` | **默认**。P2C：随机抽两个实例，选「在途请求数 / 权重」更低的一个 |
+| `zly_round_robin` | 轮询 |
+| `zly_weight_random` | 加权随机 |
+| `zly_weight_hash` | 加权 hash，按 `WithHashKey` 匹配；**不是一致性 hash**，扩缩容会全量重映射 |
+| `zly_weight_consistent_hash` | ketama 一致性 hash，按 `WithHashKey` 匹配；增删实例只迁移 1/N |
 
-四种策略用一张只读表驱动，`Install()` 由组合根显式调用一次（替代旧版 4 个 `init()`）。
+策略实现全在本包内（`strategy.go`），**不依赖第三方均衡库**。原因是三个能力——按权重、
+点名实例（`WithTarget`）、ctx 传 hashKey（`WithHashKey`）——gRPC 官方 balancer 都不提供
+（`least_request_experimental` 不看权重、`ring_hash_experimental` 的权重只能由 xDS 通过
+`internal` 包设置、hashKey 只能走 service config 的 hashPolicy），第三方实现又都绑死自家框架抽象。
+
+实现要点：
+
+- **P2C 带权重**：负载 = `inflight * 1000 / weight`，让 `PublishWeight` 仍然有效；两个候选
+  必须不同（允许重复时只有 2 个实例会有一半概率退化成随机）。
+- **一致性 hash 用固定副本数**：`weight == DefWeight` 时 160 个虚拟节点，按权重等比缩放。
+  不做「权重即节点数」，避免调权重连带动环精度。
+- **hash 类策略无 key 时降级为轮询**（不是随机），分布仍然均匀。
+- **balancer 自己实现**而不是用 `balancer/base`：base 每次子连接状态变化都重建 PickerBuilder，
+  而轮询计数、hash 环、在途请求数必须活过重建。实例集合不变时不重建环。
+
+**策略名必须带 `zly_` 前缀**：gRPC 的 balancer 注册表是进程级全局表，`round_robin`、`pick_first`
+是 grpc-go 内置名，同名注册会静默覆盖掉进程内所有其它 gRPC 客户端的实现。
+
+选点规则的三条硬约束：
+
+- **顺序确定**：Ready 集合按 `name`→线缆地址全序排序后再交给策略，保证同一 hashKey
+  在地址集未变时不会漂移。
+- **零值兜底**：`addr.Get` 取不到属性时返回零值。`weight=0` 等于「摘掉该实例」，
+  `name=""` 会让 hash 环失去意义，所以分别回落到 `addr.DefWeight` 与线缆地址；
+  `addr.Parse` 也直接拒绝 `?weight=0`。
+- **错误翻译**：未指定 `target` 时「无实例」等价于 `balancer.ErrNoSubConnAvailable`（等新 picker，
+  不结束 RPC）；点名 `target` 但实例不在 Ready 集合里则回 `codes.Unavailable`。
+
 `WithTarget` / `WithHashKey` 经 `foundation/ctxkey` 隐式传播到 Picker，不逐参数透传。
+`PickResult.Done` 统一挂回调：登记/回收在途计数，为 P2C 提供观测（以后加 EWMA 也从这里挂）。
 
 ---
 
@@ -332,7 +385,7 @@ go test ./model/registry/ ./model/discover/ -run 'TestRedis' -v
 | 组合根 / 装配 | `app/app.go`、`app/service.go` |
 | 生命周期用例 | `usecase/serve.go`、`usecase/dial.go`、`usecase/forward.go` |
 | 服务端 transport | `adapter/grpcserver/server.go`、`interceptor.go` |
-| 客户端连接池 | `adapter/grpcclient/factory.go`、`conn.go` |
+| 客户端连接 | `adapter/grpcclient/factory.go`、`conn.go` |
 | 网关 | `adapter/httpgw/gateway.go`、`req_filter.go`、`response.go` |
 | 端点协议（key / 记录 / 信号） | `model/endpoint/` |
 | 注册 / 发现 | `model/registry/`、`model/discover/` |

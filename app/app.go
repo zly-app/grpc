@@ -260,6 +260,12 @@ func (a *App) attach(z core.IApp) {
 		}
 		forward := usecase.NewForward(a.dial, hashkey.New(gwConf.HashKey))
 
+		// 客户端配置在启动期校验：客户端连接是惰性的，均衡器名写错不该等到
+		// 第一次 RPC 才暴露（那时服务已经起来了，只表现为调用失败）。
+		if err := validateClientConfigs(z, a.balancer); err != nil {
+			panic(err)
+		}
+
 		a.serverBuilder = grpcserver.NewBuilder(z)
 		a.clientFactory = grpcclient.NewFactory(z, a.discDir, a.balancer, a.hookTable)
 		a.serve = usecase.NewServe(z, a.decls, a.serverBuilder, a.regDir, func(name string) (*config.ServerConfig, error) {
@@ -301,6 +307,22 @@ func (a *App) makeConn(name string) (port.Conn, error) {
 		}
 	}
 	return a.clientFactory.Create(z.BaseContext(), name, conf)
+}
+
+// validateClientConfigs 在启动期校验 components.grpc.<name> 下的每个客户端：
+// 地址来源与均衡器名写错都直接失败，而不是等第一次 RPC 才报。
+func validateClientConfigs(z core.IApp, b *balance.Table) error {
+	comps := z.GetConfig().Config().Components[string(config.ComponentType)]
+	for name := range comps {
+		c, err := readClientConfig(z, name)
+		if err != nil {
+			return fmt.Errorf("grpc客户端 %q 配置错误: %w", name, err)
+		}
+		if _, err := b.DialOption(c.Balance); err != nil {
+			return fmt.Errorf("grpc客户端 %q 配置错误: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func readClientConfig(z core.IApp, name string) (*config.ClientConfig, error) {

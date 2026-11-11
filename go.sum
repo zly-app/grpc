@@ -336,10 +336,6 @@ github.com/zly-app/component/redis v0.0.0-20261109123915-2976065cf134 h1:J9x7zWu
 github.com/zly-app/component/redis v0.0.0-20261109123915-2976065cf134/go.mod h1:SuyA71mylQmCCe4UWJQP3wYY36h3OZcvpANFLs0glzY=
 github.com/zly-app/zapp v1.4.6 h1:kPTiGdFdQ3zSjOhNUFb8zWAAVRRp0HeRghUI1iDpI88=
 github.com/zly-app/zapp v1.4.6/go.mod h1:AZv2BvmhlVaeXhyEg1JlVYlVL3H1sQfqQm2zuFAkvWQ=
-github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97 h1:IxkdvMgQgvkWj3kFY9CR9W4XwtFkj0fOaWJvYuwn3yw=
-github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97/go.mod h1:8LD1Yt5uc6SNBYANF0IpVEx7NM+/d/9+ku5WZ9x/4W8=
-github.com/zlyuancn/zbalancer v1.1.0 h1:bDs59eIkEXUVTdwMKd6pko2PBAEgAw7TgIQwzzYZKjk=
-github.com/zlyuancn/zbalancer v1.1.0/go.mod h1:c8hq0Lig8lOqqXD7YLqPJOFsNROGG5I6N+6AbuutBYI=
 github.com/zlyuancn/zstr v0.0.0-20230412074414-14d6b645962f h1:s4xoe70+PMGec95geCKaIk/nSUo5Gu2QGqDjZOKeMXY=
 github.com/zlyuancn/zstr v0.0.0-20230412074414-14d6b645962f/go.mod h1:gcWCwemINH4jJeg+sXWMf45IAWc/fSn4rZ38eW2zqI8=
 go.etcd.io/etcd/api/v3 v3.5.0/go.mod h1:cbVKeC6lCfl7j/8jBhAK6aIYO9XOjdptoxU/nLQcPvs=

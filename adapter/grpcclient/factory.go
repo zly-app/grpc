@@ -1,6 +1,5 @@
 // Package grpcclient 是接口层 —— gRPC 客户端 transport 适配，不含业务规则。
-//
-// 拥有：连接池、DialOption、TLS 与代理凭证。
+// 拥有：单条 ClientConn 的拨号选项、TLS 与代理凭证。
 // 提供：Factory.Create（实现 usecase.ConnFactory）、Conn（实现 port.Conn）。
 // 允许调用：foundation、model/config、model/discover、model/balance、model/registry、model/hooks。
 // 禁止：判定「该连谁」（那是均衡/发现模型的规则）；禁止持有其它客户端的连接集合。
@@ -10,14 +9,11 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/zly-app/zapp/core"
 	"github.com/zly-app/zapp/pkg/utils"
-	"github.com/zlyuancn/connpool"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -41,7 +37,11 @@ func NewFactory(app core.IApp, d *discover.Directory, b port.Balancer, h *hooks.
 	return &Factory{app: app, discover: d, balancer: b, hooks: h}
 }
 
-// Create 实现业务层的 ConnFactory port：发现器 → 均衡器 → 连接池。
+// Create 实现业务层的 ConnFactory port：发现器 → 均衡器 → 一条 ClientConn。
+//
+// 不再建连接池：gRPC 的 ClientConn 并发安全且按 HTTP/2 流多路复用，
+// 每个实例一条 SubConn 已经由均衡器覆盖；再套一层独占借还的池会
+// 把并发压到池上限，并把连接数放大成「池大小 × 实例数」。
 func (f *Factory) Create(ctx context.Context, name string, conf *config.ClientConfig) (port.Conn, error) {
 	src, err := endpoint.ParseSource(conf.Address)
 	if err != nil {
@@ -70,54 +70,21 @@ func (f *Factory) Create(ctx context.Context, name string, conf *config.ClientCo
 		proxy = p
 	}
 
-	creator := func(c context.Context) (interface{}, error) {
-		v, err := f.makeConn(c, name, grpc.WithResolvers(builder), balancerOpt, target, proxy, conf)
-		if err != nil {
-			f.app.Error(c, "创建grpc连接失败", zap.String("name", name), zap.String("target", target), zap.Error(err))
-		}
-		return v, err
-	}
-	pool, err := makePool(conf, creator)
+	cc, err := f.makeConn(name, grpc.WithResolvers(builder), balancerOpt, target, proxy, conf)
 	if err != nil {
-		return nil, fmt.Errorf("grpc客户端连接池创建失败: %w", err)
+		f.app.Error(ctx, "创建grpc连接失败", zap.String("name", name), zap.String("target", target), zap.Error(err))
+		return nil, err
 	}
-	return &Conn{pool: pool}, nil
+	return &Conn{cc: cc}, nil
 }
 
-func makePool(conf *config.ClientConfig, creator connpool.Creator) (connpool.IConnectPool, error) {
-	c := &connpool.Config{
-		WaitFirstConn:     conf.WaitFirstConn,
-		MinIdle:           conf.MinIdle,
-		MaxIdle:           conf.MaxIdle,
-		MaxActive:         conf.MaxActive,
-		BatchIncrement:    conf.BatchIncrement,
-		BatchShrink:       conf.BatchShrink,
-		IdleTimeout:       time.Duration(conf.IdleTimeout) * time.Second,
-		WaitTimeout:       time.Duration(conf.WaitTimeout) * time.Second,
-		MaxWaitConnCount:  conf.MaxWaitConnCount,
-		ConnectTimeout:    time.Duration(conf.ConnectTimeout) * time.Second,
-		MaxConnLifetime:   time.Duration(conf.MaxConnLifetime) * time.Second,
-		CheckIdleInterval: time.Duration(conf.CheckIdleInterval) * time.Second,
-		Creator:           creator,
-		ConnClose: func(conn *connpool.Conn) {
-			if cc, ok := conn.GetConn().(*grpc.ClientConn); ok {
-				_ = cc.Close()
-			}
-		},
-		ValidConnected: func(conn *connpool.Conn) bool {
-			cc, ok := conn.GetConn().(*grpc.ClientConn)
-			return ok && cc.GetState() == connectivity.Ready
-		},
-	}
-	return connpool.NewConnectPool(c)
-}
-
-func (f *Factory) makeConn(ctx context.Context, name string, resolverOpt, balancerOpt grpc.DialOption,
+// makeConn 只组装拨号选项。连接本身是惰性的：真正的 TCP 在第一次 RPC
+// （或显式 Connect）时建立，失败由 gRPC 自己的退避重连处理。
+func (f *Factory) makeConn(name string, resolverOpt, balancerOpt grpc.DialOption,
 	target string, proxy utils.ISocks5Proxy, conf *config.ClientConfig) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		resolverOpt,
 		balancerOpt,
-		grpc.WithBlock(), // 必须等到连上才返回，连接池才能校验有效性
 	}
 	if conf.TLSCertFile != "" {
 		tc, err := credentials.NewClientTLSFromFile(conf.TLSCertFile, conf.TLSDomain)
@@ -135,7 +102,7 @@ func (f *Factory) makeConn(ctx context.Context, name string, resolverOpt, balanc
 	}
 	opts = append(opts, grpc.WithChainUnaryInterceptor(f.hooks.ClientFor(name)))
 
-	cc, err := grpc.DialContext(ctx, target, opts...)
+	cc, err := grpc.NewClient(target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("grpc客户端连接失败: %w", err)
 	}

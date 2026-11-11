@@ -342,7 +342,7 @@ func main() {
 go mod tidy && go run server/main.go
 ```
 
-客户端的连接池、均衡器与配置项说明见 [`AI_REFERENCE.md`](./AI_REFERENCE.md)。
+客户端的均衡器与配置项说明见 [`AI_REFERENCE.md`](./AI_REFERENCE.md)。
 
 # http 网关
 
@@ -496,7 +496,7 @@ services:
 
 `HashKey` 决定网关用哪个请求头的值作为一致性 hash 的 key：规则命中优先于默认；
 规则里 `ByHeader` 留空表示该 path 显式不参与 hash；`Path` 必须以 `/` 开头且不可重复，
-配置错误启动即失败。只有 `weight_hash` / `weight_consistent_hash` 均衡器会真正使用该 key。
+配置错误启动即失败。只有 `zly_weight_hash` / `zly_weight_consistent_hash` 均衡器会真正使用该 key。
 
 生成 `swagger`
 

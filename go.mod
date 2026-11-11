@@ -11,8 +11,6 @@ require (
 	github.com/spf13/cast v1.3.1
 	github.com/zly-app/component/redis v0.0.0-20261109123915-2976065cf134
 	github.com/zly-app/zapp v1.4.6
-	github.com/zlyuancn/connpool v0.0.0-20240529080113-fdbaa79cba97
-	github.com/zlyuancn/zbalancer v1.1.0
 	go.opentelemetry.io/otel v1.37.0
 	go.uber.org/zap v1.21.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4

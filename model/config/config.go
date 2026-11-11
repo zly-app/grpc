@@ -88,52 +88,27 @@ func (c *ServerConfig) Check() error {
 	return nil
 }
 
-// ClientConfig 拥有连接池、地址来源、均衡器、代理与 TLS 的规则。
+// ClientConfig 拥有地址来源、均衡器、代理与 TLS 的规则。
+//
+// 客户端不再维护连接池：gRPC 的一条 ClientConn 本身就是并发安全、
+// 按 HTTP/2 流多路复用的，再套一层「独占借还」的池只会压制并发、
+// 并把连接数放大成「池大小 × 实例数」。
 type ClientConfig struct {
 	Address string // 服务地址：host:port[,host:port] / static / redis://<组件名>
 	Balance string
-
-	WaitFirstConn     bool
-	MinIdle           int
-	MaxIdle           int
-	MaxActive         int
-	BatchIncrement    int
-	BatchShrink       int
-	IdleTimeout       int
-	WaitTimeout       int
-	MaxWaitConnCount  int
-	ConnectTimeout    int
-	MaxConnLifetime   int
-	CheckIdleInterval int
 
 	ProxyAddress string
 	TLSCertFile  string
 	TLSDomain    string
 }
 
-const (
-	defClientAddress     = "localhost:3000"
-	defMinIdle           = 2
-	defMaxIdle           = defMinIdle * 2
-	defMaxActive         = 10
-	defBatchShrink       = defMinIdle * 2
-	defIdleTimeout       = 3600
-	defWaitTimeout       = 5
-	defMaxWaitConnCount  = 2000
-	defConnectTimeout    = 5
-	defMaxConnLifetime   = 3600
-	defCheckIdleInterval = 5
-)
+const defClientAddress = "localhost:3000"
 
 // NewClientConfig 提供一份带默认值的客户端配置。
 func NewClientConfig() *ClientConfig {
 	return &ClientConfig{
-		Address:          defClientAddress,
-		Balance:          balance.WeightConsistentHash,
-		MaxActive:        defMaxActive,
-		IdleTimeout:      defIdleTimeout,
-		MaxWaitConnCount: defMaxWaitConnCount,
-		MaxConnLifetime:  defMaxConnLifetime,
+		Address: defClientAddress,
+		Balance: balance.Default,
 	}
 }
 
@@ -158,45 +133,12 @@ func (c *ClientConfig) Check() error {
 			}
 		}
 	}
-	if c.Balance == "" {
-		c.Balance = balance.WeightConsistentHash
+	if c.Balance = strings.TrimSpace(c.Balance); c.Balance == "" {
+		c.Balance = balance.Default
 	}
-	if c.MinIdle < 1 {
-		c.MinIdle = defMinIdle
-	}
-	if c.MaxIdle < 1 {
-		c.MaxIdle = defMaxIdle
-	}
-	if c.MaxIdle < c.MinIdle {
-		c.MaxIdle = c.MinIdle * 2
-	}
-	if c.BatchIncrement < 1 {
-		c.BatchIncrement = c.MinIdle
-	}
-	if c.BatchIncrement > c.MaxIdle {
-		c.BatchIncrement = c.MaxIdle
-	}
-	if c.BatchShrink < 1 {
-		c.BatchShrink = defBatchShrink
-	}
-	if c.IdleTimeout < 1 {
-		c.IdleTimeout = 0
-	}
-	if c.WaitTimeout < 1 {
-		c.WaitTimeout = defWaitTimeout
-	}
-	if c.MaxWaitConnCount < 1 {
-		c.MaxWaitConnCount = 0
-	}
-	if c.ConnectTimeout < 1 {
-		c.ConnectTimeout = defConnectTimeout
-	}
-	if c.MaxConnLifetime < 1 {
-		c.MaxConnLifetime = 0
-	}
-	if c.CheckIdleInterval < 1 {
-		c.CheckIdleInterval = defCheckIdleInterval
-	}
+	c.ProxyAddress = strings.TrimSpace(c.ProxyAddress)
+	c.TLSCertFile = strings.TrimSpace(c.TLSCertFile)
+	c.TLSDomain = strings.TrimSpace(c.TLSDomain)
 	return nil
 }
 

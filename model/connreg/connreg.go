@@ -2,7 +2,7 @@
 //
 // 拥有：name → port.Conn 的映射、懒创建器。
 // 提供：Get（同名只创建一次）、CloseAll（幂等）。
-// 允许调用：foundation/port.Conn。禁止：外部直接持有或替换连接池。
+// 允许调用：foundation/port.Conn。禁止：外部直接持有或替换底层连接。
 package connreg
 
 import (

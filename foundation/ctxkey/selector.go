@@ -36,8 +36,17 @@ func InjectTargetFromOpts(ctx context.Context, opts []grpc.CallOption) (context.
 	return ctx, out
 }
 
+// InjectTarget 直接把 target 放进 ctx（不经 CallOption，供内部编排与测试用）。
+func InjectTarget(ctx context.Context, target string) context.Context {
+	return context.WithValue(ctx, targetKey{}, targetOption{Target: target})
+}
+
 // Target 读取目标；取不到返回空串（表示不指定，由均衡器按规则选点）。
+// nil ctx 等同于取不到：均衡器的 Pick 可能被直接调用，不该因此崩溃。
 func Target(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
 	t, _ := ctx.Value(targetKey{}).(targetOption)
 	return t.Target
 }
@@ -74,6 +83,9 @@ func InjectHashKey(ctx context.Context, key string) context.Context {
 
 // HashKey 读取 hashKey；取不到返回空串（均衡器显式降级为不带 key 的策略）。
 func HashKey(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
 	k, _ := ctx.Value(hashKeyType{}).(hashKeyOption)
 	return k.HashKey
 }

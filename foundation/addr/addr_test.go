@@ -28,7 +28,8 @@ func TestParseWithQuery(t *testing.T) {
 }
 
 func TestParseRejectsInvalid(t *testing.T) {
-	cases := []string{"http://host:1", "grpc://", "grpc://host:1/path", "grpc://host:1?weight=oops"}
+	// weight=0 在均衡器里等于「忽略该实例」，配置写错必须启动期暴露。
+	cases := []string{"http://host:1", "grpc://", "grpc://host:1/path", "grpc://host:1?weight=oops", "grpc://host:1?weight=0"}
 	for _, c := range cases {
 		if _, err := Parse(c); err == nil {
 			t.Fatalf("非法地址 %q 应报错", c)
