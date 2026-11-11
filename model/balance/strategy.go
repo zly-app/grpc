@@ -45,6 +45,7 @@ type instance struct {
 	inflight atomic.Int64
 	ewma     atomic.Int64 // 平滑后的 RPC 延迟（纳秒），0 表示还没有样本
 	sampled  atomic.Int64 // 最后一次采样时刻（UnixNano），用于让样本过期
+	fails    atomic.Int32 // 连续失败次数，成功一次清零
 }
 
 // done 由 gRPC 在 RPC 结束时调用（成功失败都会调），用于回收 in-flight 计数。
@@ -59,12 +60,22 @@ const ewmaDen = 5
 // 过期后回到「未知」，靠权重随机重新采样。
 const sampleTTL = 30 * time.Second
 
+// failPenaltyAfter 是开始降权的连续失败次数。一次失败可能只是抖动，连续 3 次才当作节点问题。
+const failPenaltyAfter = 3
+
 // observe 记录一次 RPC 的耗时并更新 EWMA。
 //
-// 失败请求不计入：错误通常在连接/协议层快速返回，会把延迟拉低，
-// 反而让故障节点显得更快。
+// 失败请求不计入延迟：错误通常在连接/协议层快速返回，会把延迟拉低，
+// 反而让故障节点显得更快。但它们要按次数累积，用来降权——否则「快速失败」
+// 的节点会被 P2C 当成最快节点而拿到最多流量。
 func (i *instance) observe(d time.Duration, err error) {
-	if err != nil || d <= 0 {
+	if err != nil {
+		i.fails.Add(1)
+		return
+	}
+	i.fails.Store(0)
+
+	if d <= 0 {
 		return
 	}
 	ns := int64(d)
@@ -73,6 +84,14 @@ func (i *instance) observe(d time.Duration, err error) {
 	}
 	i.ewma.Store(ns)
 	i.sampled.Store(time.Now().UnixNano())
+}
+
+// failedRank 返回降权用的失败级别；未达到阈值返回 0（正常参与负载比较）。
+func (i *instance) failedRank() int32 {
+	if f := i.fails.Load(); f >= failPenaltyAfter {
+		return f
+	}
+	return 0
 }
 
 // latency 返回可用于比较的延迟估计；0 表示「没有新鲜样本」。
@@ -332,6 +351,16 @@ func (s *leastRequestStrategy) Pick(string) (*instance, error) {
 
 	now := time.Now().UnixNano() // 两个候选共用一次取时
 	best, cand := insts[i], insts[j]
+
+	// 连续失败的节点先出局：快速失败会拉低延迟样本，只比 load 会让它拿到更多流量。
+	// 用独立的失败级别比较，而不是把系数乘进 load，避免极端值溢出、语义也清楚。
+	if ra, rb := best.failedRank(), cand.failedRank(); ra != rb {
+		if rb < ra {
+			return cand, nil
+		}
+		return best, nil
+	}
+
 	if lb, lc := loadOf(best, now), loadOf(cand, now); lb != lc {
 		if lc < lb {
 			return cand, nil

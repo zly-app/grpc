@@ -260,6 +260,58 @@ func TestLeastRequestIgnoresFailedSamples(t *testing.T) {
 	}
 }
 
+// 快速失败的节点响应很低，只比负载会让它拿到最多流量；连续失败要先出局。
+func TestLeastRequestSkipsFailingInstance(t *testing.T) {
+	healthy := newFakeInst("10.0.0.1:3000", "node-healthy", 100)
+	failing := newFakeInst("10.0.0.2:3000", "node-failing", 100)
+
+	// 失败节点每次都在 1ms 内返回错误，但延迟样本不记录它；正常节点 10ms
+	for i := 0; i < 10; i++ {
+		healthy.observe(10*time.Millisecond, nil)
+		failing.observe(time.Millisecond, errors.New("boom"))
+	}
+
+	s := new(leastRequestStrategy)
+	s.Update([]*instance{healthy, failing})
+
+	for i := 0; i < 200; i++ {
+		if got := mustPick(t, s, ""); got != healthy {
+			t.Fatalf("应避开连续失败实例, 实际选了 %s", got.name)
+		}
+	}
+}
+
+// 失败一次不算——可能只是抖动；连续 3 次才降权。
+func TestFailedRankThreshold(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	inst.observe(0, errors.New("boom"))
+	inst.observe(0, errors.New("boom"))
+	if inst.failedRank() != 0 {
+		t.Fatal("失败 2 次还不该降权")
+	}
+
+	inst.observe(0, errors.New("boom"))
+	if inst.failedRank() == 0 {
+		t.Fatal("连续失败 3 次应开始降权")
+	}
+}
+
+// 恢复一次就重新参与正常比较，不能永久拉黑。
+func TestFailedRankRecovers(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	for i := 0; i < 5; i++ {
+		inst.observe(0, errors.New("boom"))
+	}
+	if inst.failedRank() == 0 {
+		t.Fatal("连续失败后应被标记")
+	}
+
+	inst.observe(5*time.Millisecond, nil)
+	if inst.failedRank() != 0 {
+		t.Fatal("成功一次后应恢复")
+	}
+}
+
 // 低并发时所有实例的在途数都是 0，负载相等；此时必须按权重加权随机。
 // 只比 in-flight 的话 PublishWeight 在低 QPS 场景完全失效——真机实测权重 200:100
 // 串行请求会退化成 1.03:1。
