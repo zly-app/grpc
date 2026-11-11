@@ -275,13 +275,14 @@ func (r *RedisDiscover) ensureEntry(ctx context.Context, serverName string) (*en
 	r.mx.Unlock()
 
 	if err := r.sub.Subscribe(ctx, endpoint.SignalKey(serverName)); err != nil {
-		log.Error(ctx, "订阅注册信号失败", zap.String("serverName", serverName), zap.Error(err))
-		r.mx.Lock()
-		if r.res[serverName] == e {
-			delete(r.res, serverName)
-		}
-		r.mx.Unlock()
-		return nil, fmt.Errorf("订阅注册信号失败: %w", err)
+		// 订阅是加速手段，不是可用性前提：reDiscoverLoop 每 ReDiscoverInterval 会拉一次全量，
+		// 订阅不可用只意味着「注册变更最多延迟一个周期」。
+		//
+		// 真机验证暴露过：某些 Redis 代理允许 HSET、却会定期掐断空闲的 PubSub 长连接。
+		// 如果这里直接失败，那类 Redis 上客户端会完全不可用——而地址其实一直在；
+		// 反过来先拉快照成功，客户端至少能用最后一次确认的地址集。
+		log.Error(ctx, "订阅注册信号失败（降级为周期重发现）",
+			zap.String("serverName", serverName), zap.Error(err))
 	}
 
 	// 版本必须在拉取之前取：拉取期间到达的信号会让版本增长，merge 据此判断快照是否已过时。
