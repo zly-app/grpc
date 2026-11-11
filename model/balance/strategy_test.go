@@ -1,8 +1,10 @@
 package balance
 
 import (
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 func mkInsts(n int, weight uint16) []*instance {
@@ -193,6 +195,71 @@ func TestLeastRequestPrefersIdle(t *testing.T) {
 	}
 }
 
+// 慢节点即使并发不高也要被降权：P2C 的负载必须含延迟，
+// 只比在途数的话「低并发但很慢」的节点永远发现不了。
+func TestLeastRequestAvoidsSlowInstance(t *testing.T) {
+	fast := newFakeInst("10.0.0.1:3000", "node-fast", 100)
+	slow := newFakeInst("10.0.0.2:3000", "node-slow", 100)
+
+	// 两者在途数都为 0，只有延迟不同
+	for i := 0; i < 10; i++ {
+		fast.observe(time.Millisecond, nil)
+		slow.observe(50*time.Millisecond, nil)
+	}
+
+	s := new(leastRequestStrategy)
+	s.Update([]*instance{fast, slow})
+
+	for i := 0; i < 200; i++ {
+		if got := mustPick(t, s, ""); got != fast {
+			t.Fatalf("应避开慢实例, 实际选了 %s", got.name)
+		}
+	}
+}
+
+// 延迟样本要能过期：节点被持续降权就再也拿不到新样本，
+// 旧的高延迟会永久保留、把它饿死。
+func TestLeastRequestSampleExpiry(t *testing.T) {
+	a := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	b := newFakeInst("10.0.0.2:3000", "node-b", 100)
+
+	for i := 0; i < 10; i++ {
+		a.observe(time.Millisecond, nil)
+		b.observe(50*time.Millisecond, nil)
+	}
+	now := time.Now().UnixNano()
+	if b.latency(now) == 0 {
+		t.Fatal("刚采样过的实例不该被判为无样本")
+	}
+
+	// 把 b 的采样时刻推到保鲜期之外
+	b.sampled.Store(time.Now().Add(-sampleTTL - time.Second).UnixNano())
+	if b.latency(time.Now().UnixNano()) != 0 {
+		t.Fatal("过期样本应返回 0，让实例回到「未知」被重新采样")
+	}
+
+	s := new(leastRequestStrategy)
+	s.Update([]*instance{a, b})
+
+	// a 仍有新鲜样本（loadOf > 0），b 未知（loadOf == 0）→ 优先选 b 采样
+	if got := mustPick(t, s, ""); got != b {
+		t.Fatalf("样本过期后应优先重新采样, 实际选了 %s", got.name)
+	}
+}
+
+// 失败请求不计入延迟：错误通常在连接/协议层快速返回，
+// 计入会把故障节点的延迟拉低，反而让它显得更快。
+func TestLeastRequestIgnoresFailedSamples(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+	inst.observe(50*time.Millisecond, nil)
+	before := inst.ewma.Load()
+
+	inst.observe(time.Millisecond, errors.New("boom"))
+	if got := inst.ewma.Load(); got != before {
+		t.Fatalf("失败请求不应改动延迟样本: %d -> %d", before, got)
+	}
+}
+
 // 低并发时所有实例的在途数都是 0，负载相等；此时必须按权重加权随机。
 // 只比 in-flight 的话 PublishWeight 在低 QPS 场景完全失效——真机实测权重 200:100
 // 串行请求会退化成 1.03:1。
@@ -238,11 +305,12 @@ func TestLoadOfIsWeightAware(t *testing.T) {
 	a.inflight.Store(5)
 	b := newFakeInst("b", "b", 50)
 	b.inflight.Store(5)
-	if loadOf(a) != 50 {
-		t.Fatalf("weight=100 inflight=5 的负载 = %d, want 50", loadOf(a))
+	now := time.Now().UnixNano()
+	if loadOf(a, now) != 50 {
+		t.Fatalf("weight=100 inflight=5 的负载 = %d, want 50", loadOf(a, now))
 	}
-	if loadOf(b) != 100 {
-		t.Fatalf("weight=50 inflight=5 的负载 = %d, want 100", loadOf(b))
+	if loadOf(b, now) != 100 {
+		t.Fatalf("weight=50 inflight=5 的负载 = %d, want 100", loadOf(b, now))
 	}
 }
 

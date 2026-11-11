@@ -2,6 +2,7 @@ package balance
 
 import (
 	"errors"
+	"time"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/codes"
@@ -14,6 +15,7 @@ import (
 type picker struct {
 	strategy strategy
 	byName   map[string]*instance
+	measure  bool // 是否观测 RPC 延迟（只有 P2C 用）
 }
 
 func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
@@ -24,21 +26,35 @@ func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		if inst == nil {
 			return balancer.PickResult{}, status.Errorf(codes.Unavailable, "目标实例不可用: %s", target)
 		}
-		return picked(inst), nil
+		return picked(inst, p.measure), nil
 	}
 
 	inst, err := p.strategy.Pick(ctxkey.HashKey(info.Ctx))
 	if err != nil {
 		return balancer.PickResult{}, pickError(err)
 	}
-	return picked(inst), nil
+	return picked(inst, p.measure), nil
 }
 
 // picked 统一登记在途计数并挂 Done 回调：gRPC 在 RPC 结束时（无论成败）回调它，
-// 用来回收计数、为 P2C 提供观测；以后加 EWMA 延迟权重也从这里挂。
-func picked(inst *instance) balancer.PickResult {
+// 用来回收计数、为 P2C 提供延迟观测。
+//
+// measure=false 时用方法值，零分配；measure=true 时闭包捕获开始时间，
+// 每次 Pick 多一次堆分配（约 20ns，相对单请求 179µs 可忽略）。
+// 只有 P2C 需要延迟样本，其余策略保持零分配。
+func picked(inst *instance, measure bool) balancer.PickResult {
 	inst.inflight.Add(1)
-	return balancer.PickResult{SubConn: inst.sc, Done: inst.done}
+	if !measure {
+		return balancer.PickResult{SubConn: inst.sc, Done: inst.done}
+	}
+	start := time.Now()
+	return balancer.PickResult{
+		SubConn: inst.sc,
+		Done: func(info balancer.DoneInfo) {
+			inst.inflight.Add(-1)
+			inst.observe(time.Since(start), info.Err)
+		},
+	}
 }
 
 // pickError 把「没有实例」翻译成 gRPC 的等待语义。

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"google.golang.org/grpc/balancer"
@@ -42,10 +43,50 @@ type instance struct {
 	name     string
 	weight   uint16
 	inflight atomic.Int64
+	ewma     atomic.Int64 // 平滑后的 RPC 延迟（纳秒），0 表示还没有样本
+	sampled  atomic.Int64 // 最后一次采样时刻（UnixNano），用于让样本过期
 }
 
 // done 由 gRPC 在 RPC 结束时调用（成功失败都会调），用于回收 in-flight 计数。
 func (i *instance) done(balancer.DoneInfo) { i.inflight.Add(-1) }
+
+// EWMA 的衰减速度：每来一个样本，向新值靠拢 1/ewmaDen。
+const ewmaDen = 5
+
+// sampleTTL 是延迟样本的保鲜期。
+//
+// 节点一旦被持续降权就再也拿不到新样本，旧的高延迟会永久保留、把它饿死。
+// 过期后回到「未知」，靠权重随机重新采样。
+const sampleTTL = 30 * time.Second
+
+// observe 记录一次 RPC 的耗时并更新 EWMA。
+//
+// 失败请求不计入：错误通常在连接/协议层快速返回，会把延迟拉低，
+// 反而让故障节点显得更快。
+func (i *instance) observe(d time.Duration, err error) {
+	if err != nil || d <= 0 {
+		return
+	}
+	ns := int64(d)
+	if old := i.ewma.Load(); old > 0 {
+		ns = old + (ns-old)/ewmaDen
+	}
+	i.ewma.Store(ns)
+	i.sampled.Store(time.Now().UnixNano())
+}
+
+// latency 返回可用于比较的延迟估计；0 表示「没有新鲜样本」。
+// now 由调用方传入（一次 Pick 只取一次时间），避免每个候选各调一次 time.Now。
+func (i *instance) latency(now int64) int64 {
+	lat := i.ewma.Load()
+	if lat <= 0 {
+		return 0
+	}
+	if now-i.sampled.Load() > int64(sampleTTL) {
+		return 0
+	}
+	return lat
+}
 
 // strategy 是选点算法。Update 只在「可用实例集合或权重」变化时调用，用于预计算
 // （权重线段、hash 环）；Pick 只读，必须并发安全。
@@ -289,8 +330,9 @@ func (s *leastRequestStrategy) Pick(string) (*instance, error) {
 		j++ // 在 [0, l-2] 上取第二个下标，跳过 i，保证两者不同
 	}
 
+	now := time.Now().UnixNano() // 两个候选共用一次取时
 	best, cand := insts[i], insts[j]
-	if lb, lc := loadOf(best), loadOf(cand); lb != lc {
+	if lb, lc := loadOf(best, now), loadOf(cand, now); lb != lc {
 		if lc < lb {
 			return cand, nil
 		}
@@ -315,6 +357,20 @@ func pickWeighted(a, b *instance) *instance {
 	return b
 }
 
-func loadOf(i *instance) int64 {
-	return i.inflight.Load() * 1000 / int64(weightOf(i))
+// loadOf 是 P2C 的比较依据，越小越优先。
+//
+// 有延迟样本时用「延迟 × (在途+1) / 权重」：延迟体现节点处理能力，在途数体现瞬时排队，
+// 权重让同等条件下的高权重实例更占优。
+// 没有样本时退回「在途数 / 权重」；两者都没有（冷启动、串行低 QPS）返回 0，
+// 由 Pick 的「负载相同」分支按权重加权随机。
+func loadOf(i *instance, now int64) int64 {
+	inf := i.inflight.Load()
+	lat := i.latency(now)
+	if lat <= 0 {
+		if inf == 0 {
+			return 0
+		}
+		return inf * 1000 / int64(weightOf(i))
+	}
+	return lat * (inf + 1) * 1000 / int64(weightOf(i))
 }

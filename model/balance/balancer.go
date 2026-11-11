@@ -30,6 +30,7 @@ func (b *builder) Build(cc balancer.ClientConn, _ balancer.BuildOptions) balance
 	cb := &connBalancer{
 		cc:       cc,
 		strategy: b.newStrategy(),
+		measure:  b.name == LeastRequest, // 只有 P2C 吃延迟样本
 		conns:    make(map[string]*connState),
 		live:     make(map[balancer.SubConn]*connState),
 		state:    connectivity.Connecting,
@@ -49,6 +50,7 @@ type connState struct {
 type connBalancer struct {
 	cc       balancer.ClientConn
 	strategy strategy
+	measure  bool // 是否在 Done 回调里采样 RPC 延迟
 
 	mu sync.Mutex
 	// conns 是当前 resolver 地址集（Address.Addr → 连接），用于和上一次地址集做差。
@@ -235,7 +237,7 @@ func (b *connBalancer) rebuildLocked() {
 			byName[inst.name] = inst
 		}
 	}
-	b.picker = &picker{strategy: b.strategy, byName: byName}
+	b.picker = &picker{strategy: b.strategy, byName: byName, measure: b.measure}
 }
 
 func sameInstances(a, b []*instance) bool {

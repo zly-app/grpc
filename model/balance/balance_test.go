@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/codes"
@@ -159,6 +160,59 @@ func readyPicker(t *testing.T, st strategy, insts ...*instance) *picker {
 		byName[i.name] = i
 	}
 	return &picker{strategy: st, byName: byName}
+}
+
+// 只有 P2C 需要延迟样本；其它策略开了会让每次 Pick 多一次堆分配。
+func TestBuilderMeasureFlag(t *testing.T) {
+	for _, name := range []string{RoundRobin, WeightRandom, WeightHash, WeightConsistentHash, LeastRequest} {
+		spec, ok := specs()[name]
+		if !ok {
+			t.Fatalf("策略表缺少 %s", name)
+		}
+		b := &builder{name: name, newStrategy: spec.newStrategy}
+		cb, ok := b.Build(&fakeClientConn{}, balancer.BuildOptions{}).(*connBalancer)
+		if !ok {
+			t.Fatalf("%s 的 balancer 类型不符: %T", name, b)
+		}
+		if want := name == LeastRequest; cb.measure != want {
+			t.Fatalf("%s 的 measure = %v, 期望 %v", name, cb.measure, want)
+		}
+	}
+}
+
+// measure=true 的 Done 回调必须既回收在途计数、又采到延迟样本。
+func TestPickedMeasuresLatency(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+
+	res := picked(inst, true)
+	if n := inst.inflight.Load(); n != 1 {
+		t.Fatalf("Pick 后应在途计数为 1, 实际 %d", n)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+	res.Done(balancer.DoneInfo{})
+
+	if n := inst.inflight.Load(); n != 0 {
+		t.Fatalf("Done 后应在途计数归零, 实际 %d", n)
+	}
+	if lat := inst.ewma.Load(); lat < int64(time.Millisecond) {
+		t.Fatalf("Done 应记录延迟, 实际 ewma=%v", time.Duration(lat))
+	}
+}
+
+// 非 P2C 策略不采样延迟：那会让每次 Pick 多一次堆分配。
+func TestPickedWithoutMeasureSkipsLatency(t *testing.T) {
+	inst := newFakeInst("10.0.0.1:3000", "node-a", 100)
+
+	res := picked(inst, false)
+	res.Done(balancer.DoneInfo{})
+
+	if lat := inst.ewma.Load(); lat != 0 {
+		t.Fatalf("measure=false 时不该记录延迟, 实际 %v", time.Duration(lat))
+	}
+	if n := inst.inflight.Load(); n != 0 {
+		t.Fatalf("在途计数仍应归零, 实际 %d", n)
+	}
 }
 
 func TestPickByTarget(t *testing.T) {
